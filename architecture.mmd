@@ -1,0 +1,58 @@
+graph TD
+    subgraph "External World"
+        User((사용자/해커))
+        GitHub((GitHub Actions))
+    end
+
+    subgraph "AWS EC2 Instance (Ubuntu 22.04)"
+
+        subgraph "Public Facing Layer"
+            NPM["Nginx Proxy Manager<br/>(SSL/Reverse Proxy)"]
+        end
+
+        subgraph "Security Layer (Sec)"
+            Vault[("HashiCorp Vault<br/>(Secrets Mgmt)")]
+            Wazuh["Wazuh Manager<br/>(SIEM/HIDS)"]
+        end
+
+        subgraph "Application Layer (Dev)"
+            BE1["Backend Service A<br/>(Spring Boot/Go/Python)"]
+            BE2["Backend Service B<br/>(Spring Boot/Go/Python)"]
+            FE["Frontend App<br/>(React/Static Store)"]
+        end
+
+        subgraph "Data Layer"
+            Postgres[("PostgreSQL DB")]
+            Redis[("Redis Cache")]
+        end
+
+        subgraph "Observability Layer (Ops)"
+            Prom["Prometheus<br/>(Metrics Collector)"]
+            Grafana["Grafana<br/>(Visualization)"]
+        end
+
+        %% Connections
+        User -->|HTTPS 443| NPM
+        NPM --> FE
+        NPM --> BE1
+        NPM --> BE2
+
+        BE1 & BE2 -->|Get Secrets| Vault
+        BE1 & BE2 -->|Query| Postgres
+        BE1 & BE2 -->|Cache| Redis
+
+        Wazuh -.->|Monitoring Logs| BE1 & BE2 & NPM & Postgres
+        Prom -.->|Scraping Metrics| BE1 & BE2 & Postgres & NPM
+        Grafana --- Prom
+
+        GitHub -->|CI/CD Pipeline| NPM & BE1 & BE2 & FE
+    end
+
+    style User fill:#f9f,stroke:#333,stroke-width:2px
+    style NPM fill:#009639,color:#fff
+    style Vault fill:#000,color:#fff
+    style Wazuh fill:#00a9e0,color:#fff
+    style BE1 fill:#6db33f,color:#fff
+    style BE2 fill:#6db33f,color:#fff
+    style Postgres fill:#336791,color:#fff
+    style Grafana fill:#f39c12,color:#fff

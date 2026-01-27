@@ -1,0 +1,16 @@
+# Default owners for everything
+* @your-team
+
+# Backend Spring - Java developer
+/services/backend-spring/ @java-developer
+
+# Backend Python - Python developer
+/services/backend-python/ @python-developer
+
+# Infrastructure
+/docker-compose.yml @devops-team
+/.github/ @devops-team
+/services/prometheus/ @devops-team
+/services/grafana/ @devops-team
+/services/vault/ @security-team
+/services/wazuh/ @security-team
