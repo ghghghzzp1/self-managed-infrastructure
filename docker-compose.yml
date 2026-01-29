@@ -20,6 +20,7 @@ services:
     volumes:
       - npm_data:/data
       - npm_letsencrypt:/etc/letsencrypt
+      - ./services/npm/custom/http_redirect.conf:/data/nginx/custom/http_redirect.conf:ro
     networks:
       - frontend
       - backend
