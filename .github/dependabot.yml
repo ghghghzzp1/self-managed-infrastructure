@@ -1,18 +1,8 @@
 version: 2
 updates:
-  # Python dependencies
-  - package-ecosystem: "pip"
-    directory: "/services/backend-python"
-    schedule:
-      interval: "weekly"
-    open-pull-requests-limit: 5
-    labels:
-      - "dependencies"
-      - "python"
-
-  # Gradle dependencies
+  # Service A - Gradle dependencies
   - package-ecosystem: "gradle"
-    directory: "/services/backend-spring"
+    directory: "/services/service-a/backend"
     schedule:
       interval: "weekly"
     open-pull-requests-limit: 5
@@ -20,25 +10,28 @@ updates:
       - "dependencies"
       - "java"
 
-  # Docker dependencies
+  # Service B - Python dependencies
+  - package-ecosystem: "pip"
+    directory: "/services/service-b/backend"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 5
+    labels:
+      - "dependencies"
+      - "python"
+
+  # Service A - Docker
   - package-ecosystem: "docker"
-    directory: "/services/backend-python"
+    directory: "/services/service-a"
     schedule:
       interval: "weekly"
     labels:
       - "dependencies"
       - "docker"
 
+  # Service B - Docker
   - package-ecosystem: "docker"
-    directory: "/services/backend-spring"
-    schedule:
-      interval: "weekly"
-    labels:
-      - "dependencies"
-      - "docker"
-
-  - package-ecosystem: "docker"
-    directory: "/services/frontend"
+    directory: "/services/service-b"
     schedule:
       interval: "weekly"
     labels:
