@@ -91,13 +91,11 @@ services:
           memory: 64M
 
   # =================
-  # 애플리케이션 레이어
+  # 애플리케이션 레이어 (통합 서비스)
   # =================
-  backend-spring:
-    build:
-      context: ./services/backend-spring
-      dockerfile: Dockerfile
-    container_name: backend-spring
+  service-a:
+    image: exit8/service-a:latest
+    container_name: service-a
     restart: unless-stopped
     ports:
       - "8080:8080"
@@ -105,6 +103,7 @@ services:
       JAVA_OPTS: "-Xms128m -Xmx256m -XX:+UseG1GC -XX:MaxGCPauseMillis=100"
     networks:
       - backend
+      - frontend
     depends_on:
       postgres:
         condition: service_healthy
@@ -122,17 +121,15 @@ services:
         reservations:
           memory: 192M
 
-  backend-python:
-    build:
-      context: ./services/backend-python
-      dockerfile: Dockerfile
-    container_name: backend-python
+  service-b:
+    image: exit8/service-b:latest
+    container_name: service-b
     restart: unless-stopped
     ports:
       - "8000:8000"
-    command: uvicorn main:app --host 0.0.0.0 --port 8000 --workers 2
     networks:
       - backend
+      - frontend
     depends_on:
       postgres:
         condition: service_healthy
@@ -149,28 +146,6 @@ services:
           memory: 256M
         reservations:
           memory: 128M
-
-  frontend:
-    build:
-      context: ./services/frontend
-      dockerfile: Dockerfile
-    container_name: frontend
-    restart: unless-stopped
-    ports:
-      - "3000:80"
-    networks:
-      - frontend
-    healthcheck:
-      test: ["CMD", "wget", "-q", "--spider", "http://localhost/health"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-    deploy:
-      resources:
-        limits:
-          memory: 64M
-        reservations:
-          memory: 32M
 
   # ==============
   # 보안 레이어

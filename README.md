@@ -1,6 +1,6 @@
 # Exit8 Project
 
-AWS EC2 기반 DevSecOps 학습 프로젝트
+GCP 기반 경량 All-in-one 보안 플랫폼 구축  
 
 ## Architecture Overview
 
@@ -122,7 +122,7 @@ docker-compose -f services/wazuh/docker-compose.wazuh.yml up -d
 **배포 시 필요한 GitHub Secrets:**
 
 ```
-SERVER_HOST      # EC2 IP 또는 도메인
+SERVER_HOST      # GCP IP 또는 도메인
 SERVER_USER      # SSH 사용자 (예: ubuntu)
 SERVER_SSH_KEY   # SSH 프라이빗 키
 ```

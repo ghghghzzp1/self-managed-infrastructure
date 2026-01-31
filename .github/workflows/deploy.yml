@@ -1,0 +1,186 @@
+name: Deploy
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'services/service-a/**'
+      - 'services/service-b/**'
+      - 'docker-compose.yml'
+      - '.github/workflows/deploy.yml'
+
+env:
+  DOCKER_HUB_USERNAME: exit8
+
+jobs:
+  # ====================
+  # Detect Changed Services
+  # ====================
+  detect-changes:
+    name: Detect Changes
+    runs-on: ubuntu-latest
+    outputs:
+      service-a: ${{ steps.changes.outputs.service-a }}
+      service-b: ${{ steps.changes.outputs.service-b }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
+
+      - name: Check for changes
+        id: changes
+        run: |
+          # Get changed files
+          CHANGED=$(git diff --name-only HEAD~1 HEAD)
+          echo "Changed files:"
+          echo "$CHANGED"
+
+          # Check service-a
+          if echo "$CHANGED" | grep -q "^services/service-a/"; then
+            echo "service-a=true" >> $GITHUB_OUTPUT
+          else
+            echo "service-a=false" >> $GITHUB_OUTPUT
+          fi
+
+          # Check service-b
+          if echo "$CHANGED" | grep -q "^services/service-b/"; then
+            echo "service-b=true" >> $GITHUB_OUTPUT
+          else
+            echo "service-b=false" >> $GITHUB_OUTPUT
+          fi
+
+  # ====================
+  # Build & Push Service A
+  # ====================
+  build-service-a:
+    name: Build Service A
+    runs-on: ubuntu-latest
+    needs: detect-changes
+    if: needs.detect-changes.outputs.service-a == 'true'
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ env.DOCKER_HUB_USERNAME }}
+          password: ${{ secrets.DOCKER_HUB_TOKEN }}
+
+      - name: Extract metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.DOCKER_HUB_USERNAME }}/service-a
+          tags: |
+            type=sha,prefix=
+            type=raw,value=latest
+
+      - name: Build and push
+        uses: docker/build-push-action@v5
+        with:
+          context: ./services/service-a
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  # ====================
+  # Build & Push Service B
+  # ====================
+  build-service-b:
+    name: Build Service B
+    runs-on: ubuntu-latest
+    needs: detect-changes
+    if: needs.detect-changes.outputs.service-b == 'true'
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ env.DOCKER_HUB_USERNAME }}
+          password: ${{ secrets.DOCKER_HUB_TOKEN }}
+
+      - name: Extract metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.DOCKER_HUB_USERNAME }}/service-b
+          tags: |
+            type=sha,prefix=
+            type=raw,value=latest
+
+      - name: Build and push
+        uses: docker/build-push-action@v5
+        with:
+          context: ./services/service-b
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  # ====================
+  # Deploy to Server
+  # ====================
+  deploy:
+    name: Deploy to Server
+    runs-on: ubuntu-latest
+    needs: [detect-changes, build-service-a, build-service-b]
+    if: |
+      always() &&
+      (needs.build-service-a.result == 'success' || needs.build-service-a.result == 'skipped') &&
+      (needs.build-service-b.result == 'success' || needs.build-service-b.result == 'skipped') &&
+      (needs.detect-changes.outputs.service-a == 'true' || needs.detect-changes.outputs.service-b == 'true')
+    environment: production
+
+    steps:
+      - name: Deploy via SSH
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.SERVER_HOST }}
+          username: ${{ secrets.SERVER_USER }}
+          key: ${{ secrets.SERVER_SSH_KEY }}
+          script: |
+            cd /opt/exit8
+
+            # Pull only changed services
+            if [ "${{ needs.detect-changes.outputs.service-a }}" == "true" ]; then
+              echo "Pulling service-a..."
+              docker pull exit8/service-a:latest
+            fi
+
+            if [ "${{ needs.detect-changes.outputs.service-b }}" == "true" ]; then
+              echo "Pulling service-b..."
+              docker pull exit8/service-b:latest
+            fi
+
+            # Restart services with zero-downtime
+            docker-compose up -d --remove-orphans
+
+            # Cleanup old images
+            docker image prune -f
+
+            # Health check
+            sleep 10
+
+            if [ "${{ needs.detect-changes.outputs.service-a }}" == "true" ]; then
+              curl -f http://localhost:8080/health || exit 1
+            fi
+
+            if [ "${{ needs.detect-changes.outputs.service-b }}" == "true" ]; then
+              curl -f http://localhost:8000/health || exit 1
+            fi
+
+            echo "Deployment completed successfully"

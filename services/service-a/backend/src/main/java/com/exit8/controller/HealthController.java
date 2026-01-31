@@ -11,7 +11,18 @@ public class HealthController {
     public Map<String, String> health() {
         return Map.of(
             "status", "ok",
-            "service", "backend-spring"
+            "service", "service-a"
+        );
+    }
+
+    @GetMapping("/api/dashboard")
+    public Map<String, Object> dashboard() {
+        return Map.of(
+            "message", "Dashboard API",
+            "data", Map.of(
+                "totalUsers", 150,
+                "activeUsers", 42
+            )
         );
     }
 }
