@@ -15,14 +15,5 @@ public class HealthController {
         );
     }
 
-    @GetMapping("/api/dashboard")
-    public Map<String, Object> dashboard() {
-        return Map.of(
-            "message", "Dashboard API",
-            "data", Map.of(
-                "totalUsers", 150,
-                "activeUsers", 42
-            )
-        );
-    }
+    // TODO: Add your API endpoints here
 }

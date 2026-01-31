@@ -1,17 +1,7 @@
 # ==========================================
-# Service B: FastAPI + Login UI
-# Multi-stage build for integrated deployment
+# Service B: FastAPI Backend
 # ==========================================
 
-# Stage 1: Build Frontend
-FROM node:20-alpine AS frontend-build
-WORKDIR /app/frontend
-COPY frontend/package*.json ./
-RUN npm ci --only=production
-COPY frontend/ ./
-RUN npm run build
-
-# Stage 2: Production Image
 FROM python:3.11-slim
 WORKDIR /app
 
@@ -28,7 +18,7 @@ RUN pip install --no-cache-dir -r requirements.txt
 COPY backend/ ./
 
 # Copy frontend static files
-COPY --from=frontend-build /app/frontend/dist /app/static
+COPY frontend/ /app/static/
 
 # Health check
 HEALTHCHECK --interval=30s --timeout=10s --retries=3 \
