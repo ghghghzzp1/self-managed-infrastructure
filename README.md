@@ -34,18 +34,25 @@ docker-compose up -d
 ```
 exit8/
 ├── docker-compose.yml
+├── docker-compose.local.yml  # 로컬 개발용
 ├── .env.example
 ├── .github/
 │   ├── workflows/
 │   │   ├── ci.yml          # Build & Test
-│   │   ├── cd.yml          # Deploy
+│   │   ├── deploy.yml      # Deploy
 │   │   └── security.yml    # Vulnerability Scan
 │   ├── dependabot.yml      # Auto dependency updates
 │   └── CODEOWNERS
+├── docs/
+│   └── BUILD_GUIDE.md      # 빌드 가이드
 ├── services/
-│   ├── backend-spring/     # Spring Boot (Java 17)
-│   ├── backend-python/     # FastAPI (Python 3.11)
-│   ├── frontend/           # Static (Nginx)
+│   ├── service-a/          # Spring Boot + React (통합 서비스)
+│   │   ├── backend/        # Java 17
+│   │   └── frontend/       # React + Vite
+│   ├── service-b/          # FastAPI + React (통합 서비스)
+│   │   ├── backend/        # Python 3.11
+│   │   └── frontend/       # React + Vite
+│   ├── npm/                # Nginx Proxy Manager 설정
 │   ├── vault/              # HashiCorp Vault
 │   ├── wazuh/              # Wazuh SIEM
 │   ├── prometheus/         # Metrics Collector
@@ -57,10 +64,9 @@ exit8/
 
 | Service | Port | Description |
 |---------|------|-------------|
-| Nginx Proxy Manager | 80, 443, 81 | Reverse Proxy / SSL |
-| Backend Spring | 8080 | Java API (Health only) |
-| Backend Python | 8000 | Python API (Health only) |
-| Frontend | 3000 | Static Web App |
+| Nginx Proxy Manager | 80, 443, 81 | Reverse Proxy / SSL (HTTP→HTTPS 자동 리다이렉트) |
+| Service-A | 8080 | Spring Boot + React 통합 서비스 |
+| Service-B | 8000 | FastAPI + React 통합 서비스 |
 | PostgreSQL | 5432 | Database |
 | Redis | 6379 | Cache |
 | Vault | 8200 | Secrets Management |
