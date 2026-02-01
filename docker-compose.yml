@@ -91,26 +91,27 @@ services:
           memory: 128M
 
   # =================
-  # 애플리케이션 레이어 (통합 서비스)
+  # 애플리케이션 레이어 (분리된 서비스)
   # =================
-  service-a:
-    image: exit8/service-a:latest
-    container_name: service-a
+
+  # Service A - Backend (Spring Boot)
+  service-a-backend:
+    image: exit8/service-a-backend:latest
+    container_name: service-a-backend
     restart: unless-stopped
-    ports:
-      - "8080:8080"
+    expose:
+      - "8080"
     environment:
       JAVA_OPTS: "-Xms256m -Xmx512m -XX:+UseG1GC -XX:MaxGCPauseMillis=100"
     networks:
       - backend
-      - frontend
     depends_on:
       postgres:
         condition: service_healthy
       redis:
         condition: service_healthy
     healthcheck:
-      test: ["CMD", "wget", "-q", "--spider", "http://localhost:8080/health"]
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:8080/actuator/health"]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -121,15 +122,39 @@ services:
         reservations:
           memory: 384M
 
-  service-b:
-    image: exit8/service-b:latest
-    container_name: service-b
+  # Service A - Frontend (Nginx)
+  service-a-frontend:
+    image: exit8/service-a-frontend:latest
+    container_name: service-a-frontend
     restart: unless-stopped
     ports:
-      - "8000:8000"
+      - "3000:80"
+    networks:
+      - frontend
+      - backend
+    depends_on:
+      - service-a-backend
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:80/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    deploy:
+      resources:
+        limits:
+          memory: 128M
+        reservations:
+          memory: 64M
+
+  # Service B - Backend (FastAPI)
+  service-b-backend:
+    image: exit8/service-b-backend:latest
+    container_name: service-b-backend
+    restart: unless-stopped
+    expose:
+      - "8000"
     networks:
       - backend
-      - frontend
     depends_on:
       postgres:
         condition: service_healthy
@@ -146,6 +171,30 @@ services:
           memory: 512M
         reservations:
           memory: 256M
+
+  # Service B - Frontend (Nginx)
+  service-b-frontend:
+    image: exit8/service-b-frontend:latest
+    container_name: service-b-frontend
+    restart: unless-stopped
+    ports:
+      - "3002:80"
+    networks:
+      - frontend
+      - backend
+    depends_on:
+      - service-b-backend
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:80/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    deploy:
+      resources:
+        limits:
+          memory: 128M
+        reservations:
+          memory: 64M
 
   # ==============
   # 보안 레이어

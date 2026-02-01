@@ -3,10 +3,7 @@ server:
 
 spring:
   application:
-    name: service-a
-  web:
-    resources:
-      static-locations: classpath:/static/
+    name: service-a-backend
 
 management:
   endpoints:

@@ -82,12 +82,14 @@ cd /path/to/exit8
 # 전체 서비스 빌드 및 실행
 docker-compose -f docker-compose.local.yml up --build
 
-# 특정 서비스만 빌드
-docker-compose -f docker-compose.local.yml build service-a
-docker-compose -f docker-compose.local.yml build service-b
+# 특정 서비스만 빌드 (분리된 구조)
+docker-compose -f docker-compose.local.yml build service-a-backend
+docker-compose -f docker-compose.local.yml build service-a-frontend
+docker-compose -f docker-compose.local.yml build service-b-backend
+docker-compose -f docker-compose.local.yml build service-b-frontend
 
 # 특정 서비스만 실행
-docker-compose -f docker-compose.local.yml up service-a postgres redis
+docker-compose -f docker-compose.local.yml up service-a-backend service-a-frontend postgres redis
 ```
 
 ### 방법 2: 프로덕션 아키텍처(amd64)로 빌드
@@ -96,8 +98,10 @@ Mac ARM에서 프로덕션과 동일한 환경으로 테스트하고 싶을 때 
 
 ```bash
 # Mac ARM에서 amd64로 빌드 (에뮬레이션, 느림)
-docker buildx build --platform linux/amd64 -t exit8/service-a:local ./services/service-a
-docker buildx build --platform linux/amd64 -t exit8/service-b:local ./services/service-b
+docker buildx build --platform linux/amd64 -t exit8/service-a-backend:local ./services/service-a/backend
+docker buildx build --platform linux/amd64 -t exit8/service-a-frontend:local ./services/service-a/frontend
+docker buildx build --platform linux/amd64 -t exit8/service-b-backend:local ./services/service-b/backend
+docker buildx build --platform linux/amd64 -t exit8/service-b-frontend:local ./services/service-b/frontend
 
 # 또는 docker-compose에서 플랫폼 지정
 DOCKER_DEFAULT_PLATFORM=linux/amd64 docker-compose -f docker-compose.local.yml up --build
@@ -155,19 +159,33 @@ uvicorn main:app --reload --port 8000
 # Docker Hub 로그인
 docker login
 
-# Service A - 멀티 아키텍처 빌드 & 푸시
+# Service A Backend - 멀티 아키텍처 빌드 & 푸시
 docker buildx build \
   --platform linux/amd64,linux/arm64 \
-  -t exit8/service-a:latest \
+  -t exit8/service-a-backend:latest \
   --push \
-  ./services/service-a
+  ./services/service-a/backend
 
-# Service B - 멀티 아키텍처 빌드 & 푸시
+# Service A Frontend - 멀티 아키텍처 빌드 & 푸시
 docker buildx build \
   --platform linux/amd64,linux/arm64 \
-  -t exit8/service-b:latest \
+  -t exit8/service-a-frontend:latest \
   --push \
-  ./services/service-b
+  ./services/service-a/frontend
+
+# Service B Backend - 멀티 아키텍처 빌드 & 푸시
+docker buildx build \
+  --platform linux/amd64,linux/arm64 \
+  -t exit8/service-b-backend:latest \
+  --push \
+  ./services/service-b/backend
+
+# Service B Frontend - 멀티 아키텍처 빌드 & 푸시
+docker buildx build \
+  --platform linux/amd64,linux/arm64 \
+  -t exit8/service-b-frontend:latest \
+  --push \
+  ./services/service-b/frontend
 ```
 
 ### 프로덕션 서버 배포
@@ -182,12 +200,16 @@ docker-compose pull
 docker-compose up -d --remove-orphans
 
 # 헬스 체크
-curl http://localhost:8080/health  # service-a
-curl http://localhost:8000/health  # service-b
+curl http://localhost:3000/health   # service-a-frontend
+curl http://localhost:8080/actuator/health  # service-a-backend (internal)
+curl http://localhost:3002/health   # service-b-frontend
+curl http://localhost:8000/health   # service-b-backend (internal)
 
 # 로그 확인
-docker-compose logs -f service-a
-docker-compose logs -f service-b
+docker-compose logs -f service-a-backend
+docker-compose logs -f service-a-frontend
+docker-compose logs -f service-b-backend
+docker-compose logs -f service-b-frontend
 ```
 
 ---

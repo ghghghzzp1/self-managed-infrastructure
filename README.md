@@ -46,12 +46,16 @@ exit8/
 ├── docs/
 │   └── BUILD_GUIDE.md      # 빌드 가이드
 ├── services/
-│   ├── service-a/          # Spring Boot + React (통합 서비스)
-│   │   ├── backend/        # Java 17
-│   │   └── frontend/       # React
-│   ├── service-b/          # FastAPI + React (통합 서비스)
-│   │   ├── backend/        # Python 3.11
-│   │   └── frontend/       # React
+│   ├── service-a/          # Service A (분리된 구조)
+│   │   ├── backend/        # Spring Boot (Java 17)
+│   │   │   └── Dockerfile  # exit8/service-a-backend
+│   │   └── frontend/       # Nginx + Static
+│   │       └── Dockerfile  # exit8/service-a-frontend
+│   ├── service-b/          # Service B (분리된 구조)
+│   │   ├── backend/        # FastAPI (Python 3.11)
+│   │   │   └── Dockerfile  # exit8/service-b-backend
+│   │   └── frontend/       # Nginx + Static
+│   │       └── Dockerfile  # exit8/service-b-frontend
 │   ├── npm/                # Nginx Proxy Manager 설정
 │   ├── vault/              # HashiCorp Vault
 │   ├── wazuh/              # Wazuh SIEM
@@ -62,17 +66,19 @@ exit8/
 
 ## Services
 
-| Service | Port | Description |
-|---------|------|-------------|
-| Nginx Proxy Manager | 80, 443, 81 | Reverse Proxy / SSL (HTTP→HTTPS 자동 리다이렉트) |
-| Service-A | 8080 | Spring Boot + React 통합 서비스 |
-| Service-B | 8000 | FastAPI + React 통합 서비스 |
-| PostgreSQL | 5432 | Database |
-| Redis | 6379 | Cache |
-| Vault | 8200 | Secrets Management |
-| Wazuh Dashboard | 5601 | SIEM Web UI (별도 실행) |
-| Prometheus | 9090 | Metrics Collector |
-| Grafana | 3001 | Visualization Dashboard |
+| Service | Port | Image | Description |
+|---------|------|-------|-------------|
+| Nginx Proxy Manager | 80, 443, 81 | jc21/nginx-proxy-manager | Reverse Proxy / SSL |
+| Service-A Backend | 8080 (internal) | exit8/service-a-backend | Spring Boot API |
+| Service-A Frontend | 3000 | exit8/service-a-frontend | Nginx + Static Files |
+| Service-B Backend | 8000 (internal) | exit8/service-b-backend | FastAPI API |
+| Service-B Frontend | 3002 | exit8/service-b-frontend | Nginx + Static Files |
+| PostgreSQL | 5432 | postgres:15-alpine | Database |
+| Redis | 6379 | redis:7-alpine | Cache |
+| Vault | 8200 | hashicorp/vault | Secrets Management |
+| Wazuh Dashboard | 5601 | - | SIEM Web UI (별도 실행) |
+| Prometheus | 9090 | prom/prometheus | Metrics Collector |
+| Grafana | 3001 | grafana/grafana | Visualization Dashboard |
 
 ## Vault 초기 설정
 
@@ -124,12 +130,22 @@ docker-compose -f services/wazuh/docker-compose.wazuh.yml up -d
 | Deploy | main push | 변경 서비스 감지 → Docker 이미지 빌드 → Docker Hub 푸시 → SSH 접속 후 변경분 Pull 및 배포 → 헬스체크 |
 | Security | main, weekly | 의존성 취약점, 컨테이너, 시크릿 스캔 |
 
+**분리된 이미지 구조:**
+
+| 변경 경로 | 빌드되는 이미지 |
+|-----------|----------------|
+| `services/service-a/backend/**` | `exit8/service-a-backend` |
+| `services/service-a/frontend/**` | `exit8/service-a-frontend` |
+| `services/service-b/backend/**` | `exit8/service-b-backend` |
+| `services/service-b/frontend/**` | `exit8/service-b-frontend` |
+
 **배포 시 필요한 GitHub Secrets:**
 
 ```
-SERVER_HOST      # GCP IP 또는 도메인
-SERVER_USER      # SSH 사용자 (예: ubuntu)
-SERVER_SSH_KEY   # SSH 프라이빗 키
+SERVER_HOST       # GCP IP 또는 도메인
+SERVER_USER       # SSH 사용자 (예: ubuntu)
+SERVER_SSH_KEY    # SSH 프라이빗 키
+DOCKER_HUB_TOKEN  # Docker Hub 접근 토큰
 ```
 
 **Dependabot:**
