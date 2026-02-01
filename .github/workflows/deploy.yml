@@ -195,7 +195,7 @@ jobs:
 
     steps:
       - name: Deploy via SSH
-        uses: appleboy/ssh-action@v1.0.3
+        uses: appleboy/ssh-action@v1.2.5
         env:
           SERVICE_A_CHANGED: ${{ needs.detect-changes.outputs.service-a }}
           SERVICE_B_CHANGED: ${{ needs.detect-changes.outputs.service-b }}
