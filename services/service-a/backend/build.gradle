@@ -27,10 +27,3 @@ dependencies {
 tasks.named('test') {
     useJUnitPlatform()
 }
-
-// Serve static files from /static directory
-bootJar {
-    from('static') {
-        into 'BOOT-INF/classes/static'
-    }
-}
