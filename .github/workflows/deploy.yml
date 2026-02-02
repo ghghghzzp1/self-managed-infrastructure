@@ -317,7 +317,18 @@ jobs:
           key: ${{ secrets.SERVER_SSH_KEY }}
           envs: SERVICE_A_BACKEND,SERVICE_A_FRONTEND,SERVICE_B_BACKEND,SERVICE_B_FRONTEND,INFRA_CHANGED,CHANGED_INFRA_SERVICES
           script: |
-            cd /opt/exit8
+            set -e  # Exit on any error
+
+            # Navigate to project directory
+            cd /opt/exit8/self-managed-infrastructure || { echo "Error: /opt/exit8/self-managed-infrastructure directory not found"; exit 1; }
+            echo "Current directory: $(pwd)"
+
+            # Verify docker-compose.yml exists
+            if [ ! -f "docker-compose.yml" ]; then
+              echo "Error: docker-compose.yml not found in $(pwd)"
+              ls -la
+              exit 1
+            fi
 
             # Pull latest code
             git pull origin main
@@ -362,7 +373,12 @@ jobs:
 
             if [ -n "$SERVICES_TO_UPDATE" ]; then
               echo "Updating services: $SERVICES_TO_UPDATE"
-              docker-compose up -d --build --no-deps $SERVICES_TO_UPDATE
+              # Use docker compose (V2) with fallback to docker-compose (V1)
+              if command -v docker compose &> /dev/null; then
+                docker compose up -d --no-deps $SERVICES_TO_UPDATE
+              else
+                docker-compose up -d --no-deps $SERVICES_TO_UPDATE
+              fi
             else
               echo "No services to update"
             fi
@@ -371,12 +387,12 @@ jobs:
             docker image prune -f
 
             # Health check
-            sleep 10
+            sleep 15
 
             # Backend health checks via docker exec (internal ports)
             if [ "$SERVICE_A_BACKEND" == "true" ]; then
               echo "Health check for service-a-backend..."
-              docker exec service-a-backend wget -q --spider http://localhost:8080/actuator/health || exit 1
+              docker exec service-a-backend curl -f http://localhost:8080/actuator/health || exit 1
             fi
 
             if [ "$SERVICE_B_BACKEND" == "true" ]; then
