@@ -17,9 +17,9 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v4
 
-      - name: Run Trivy vulnerability scanner (Service A - Java)
+      - name: Run Trivy vulnerability scanner (Service A Backend - Java)
         uses: aquasecurity/trivy-action@master
         with:
           scan-type: 'fs'
@@ -27,11 +27,27 @@ jobs:
           format: 'table'
           severity: 'CRITICAL,HIGH'
 
-      - name: Run Trivy vulnerability scanner (Service B - Python)
+      - name: Run Trivy vulnerability scanner (Service A Frontend)
+        uses: aquasecurity/trivy-action@master
+        with:
+          scan-type: 'fs'
+          scan-ref: 'services/service-a/frontend'
+          format: 'table'
+          severity: 'CRITICAL,HIGH'
+
+      - name: Run Trivy vulnerability scanner (Service B Backend - Python)
         uses: aquasecurity/trivy-action@master
         with:
           scan-type: 'fs'
           scan-ref: 'services/service-b/backend'
+          format: 'table'
+          severity: 'CRITICAL,HIGH'
+
+      - name: Run Trivy vulnerability scanner (Service B Frontend)
+        uses: aquasecurity/trivy-action@master
+        with:
+          scan-type: 'fs'
+          scan-ref: 'services/service-b/frontend'
           format: 'table'
           severity: 'CRITICAL,HIGH'
 
@@ -43,16 +59,53 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v4
 
-      - name: Build Service B Image
+      # Service A Backend
+      - name: Build Service A Backend Image
         run: |
-          docker build -t exit8/service-b:scan ./services/service-b
+          docker build -t exit8/service-a-backend:scan ./services/service-a/backend
 
-      - name: Run Trivy container scanner
+      - name: Scan Service A Backend
         uses: aquasecurity/trivy-action@master
         with:
-          image-ref: 'exit8/service-b:scan'
+          image-ref: 'exit8/service-a-backend:scan'
+          format: 'table'
+          severity: 'CRITICAL,HIGH'
+
+      # Service A Frontend
+      - name: Build Service A Frontend Image
+        run: |
+          docker build -t exit8/service-a-frontend:scan ./services/service-a/frontend
+
+      - name: Scan Service A Frontend
+        uses: aquasecurity/trivy-action@master
+        with:
+          image-ref: 'exit8/service-a-frontend:scan'
+          format: 'table'
+          severity: 'CRITICAL,HIGH'
+
+      # Service B Backend
+      - name: Build Service B Backend Image
+        run: |
+          docker build -t exit8/service-b-backend:scan ./services/service-b/backend
+
+      - name: Scan Service B Backend
+        uses: aquasecurity/trivy-action@master
+        with:
+          image-ref: 'exit8/service-b-backend:scan'
+          format: 'table'
+          severity: 'CRITICAL,HIGH'
+
+      # Service B Frontend
+      - name: Build Service B Frontend Image
+        run: |
+          docker build -t exit8/service-b-frontend:scan ./services/service-b/frontend
+
+      - name: Scan Service B Frontend
+        uses: aquasecurity/trivy-action@master
+        with:
+          image-ref: 'exit8/service-b-frontend:scan'
           format: 'table'
           severity: 'CRITICAL,HIGH'
 
@@ -68,7 +121,7 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Detect secrets with Gitleaks
-        uses: gitleaks/gitleaks-action@v2.3.9
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Detect secrets with TruffleHog
+        uses: trufflesecurity/trufflehog@main
+        with:
+          extra_args: --only-verified
