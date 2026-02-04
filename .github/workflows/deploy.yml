@@ -328,6 +328,9 @@ jobs:
             cd /opt/exit8/self-managed-infrastructure || { echo "Error: /opt/exit8/self-managed-infrastructure directory not found"; exit 1; }
             echo "Current directory: $(pwd)"
 
+            # Fix git ownership issue (required for GitHub Actions SSH user)
+            git config --global --add safe.directory /opt/exit8/self-managed-infrastructure
+
             # Verify docker-compose.yml exists
             if [ ! -f "docker-compose.yml" ]; then
               echo "Error: docker-compose.yml not found in $(pwd)"
