@@ -1,58 +1,84 @@
 graph TD
-    subgraph "External World"
-        User((사용자/해커))
-        GitHub((GitHub Actions))
+subgraph "External World"
+    User((사용자/해커))
+    GitHub((GitHub Actions))
+    DHub([Docker Hub])
+end
+
+subgraph "GCP Instance (Ubuntu 22.04)"
+    
+    subgraph "Public Facing Layer"
+        NPM["Nginx Proxy Manager<br/>(SSL/Routing)"]
+        Redirect["HTTP to HTTPS Redirect"]
     end
 
-    subgraph "AWS EC2 Instance (Ubuntu 22.04)"
-
-        subgraph "Public Facing Layer"
-            NPM["Nginx Proxy Manager<br/>(SSL/Reverse Proxy)"]
-        end
-
-        subgraph "Security Layer (Sec)"
-            Vault[("HashiCorp Vault<br/>(Secrets Mgmt)")]
-            Wazuh["Wazuh Manager<br/>(SIEM/HIDS)"]
-        end
-
-        subgraph "Application Layer (Dev)"
-            BE1["Backend Service A<br/>(Spring Boot/Go/Python)"]
-            BE2["Backend Service B<br/>(Spring Boot/Go/Python)"]
-            FE["Frontend App<br/>(React/Static Store)"]
-        end
-
-        subgraph "Data Layer"
-            Postgres[("PostgreSQL DB")]
-            Redis[("Redis Cache")]
-        end
-
-        subgraph "Observability Layer (Ops)"
-            Prom["Prometheus<br/>(Metrics Collector)"]
-            Grafana["Grafana<br/>(Visualization)"]
-        end
-
-        %% Connections
-        User -->|HTTPS 443| NPM
-        NPM --> FE
-        NPM --> BE1
-        NPM --> BE2
-
-        BE1 & BE2 -->|Get Secrets| Vault
-        BE1 & BE2 -->|Query| Postgres
-        BE1 & BE2 -->|Cache| Redis
-
-        Wazuh -.->|Monitoring Logs| BE1 & BE2 & NPM & Postgres
-        Prom -.->|Scraping Metrics| BE1 & BE2 & Postgres & NPM
-        Grafana --- Prom
-
-        GitHub -->|CI/CD Pipeline| NPM & BE1 & BE2 & FE
+    subgraph "Security Layer (Sec)"
+        Vault[("HashiCorp Vault")]
+        Wazuh["Wazuh Manager"]
     end
 
-    style User fill:#f9f,stroke:#333,stroke-width:2px
-    style NPM fill:#009639,color:#fff
-    style Vault fill:#000,color:#fff
-    style Wazuh fill:#00a9e0,color:#fff
-    style BE1 fill:#6db33f,color:#fff
-    style BE2 fill:#6db33f,color:#fff
-    style Postgres fill:#336791,color:#fff
-    style Grafana fill:#f39c12,color:#fff
+    subgraph "Application Layer (Dev)"
+        subgraph "Service A: Resilience Lab (Split)"
+            FE1["Frontend A (React/Nginx)"]
+            BE1["Backend A (Spring Boot)"]
+        end
+        
+        subgraph "Service B: Security Lab (Split)"
+            FE2["Frontend B (React/Nginx)"]
+            BE2["Backend B (FastAPI)"]
+        end
+    end
+
+    subgraph "Data Layer"
+        Postgres[("PostgreSQL DB")]
+        Redis[("Redis Cache")]
+    end
+
+    subgraph "Observability Layer (Ops)"
+        Prom["Prometheus"]
+        Grafana["Grafana"]
+    end
+
+    %% Routing Logic
+    User -->|Port 80| Redirect
+    Redirect --> NPM
+    User -->|Port 443| NPM
+    
+    %% Service A Routing
+    NPM -->|/| FE1
+    NPM -->|/api/v1| BE1
+    
+    %% Service B Routing
+    NPM -->|/login| FE2
+    NPM -->|/api/v2| BE2
+    
+    %% Logic Connections
+    BE1 & BE2 --> Vault
+    BE1 & BE2 --> Postgres
+    BE1 & BE2 --> Redis
+    FE1 -.->|API Calls| BE1
+    FE2 -.->|API Calls| BE2
+    
+    %% Monitoring
+    Wazuh -.->|Logs| BE1 & BE2 & FE1 & FE2 & NPM
+    Prom -.->|Metrics| BE1 & BE2 & Postgres & NPM
+    Grafana --- Prom
+    
+    %% CI/CD Flow
+    GitHub -->|1. Build & Push| DHub
+    DHub -->|2. Pull & Deploy| FE1 & BE1
+    DHub -->|2. Pull & Deploy| FE2 & BE2
+end
+
+style User fill:#f9f,stroke:#333,stroke-width:2px
+style NPM fill:#009639,color:#fff
+style Redirect fill:#f39c12,color:#fff
+style Vault fill:#000,color:#fff
+style Wazuh fill:#00a9e0,color:#fff
+style FE1 fill:#00d8ff,color:#333
+style FE2 fill:#00d8ff,color:#333
+style BE1 fill:#6db33f,color:#fff
+style BE2 fill:#009485,color:#fff
+style Postgres fill:#336791,color:#fff
+style Grafana fill:#f39c12,color:#fff
+style DHub fill:#066da5,color:#fff

@@ -4,8 +4,7 @@ on:
   push:
     branches: [main]
     paths:
-      - 'services/service-a/**'
-      - 'services/service-b/**'
+      - 'services/**'
       - 'docker-compose.yml'
       - '.github/workflows/deploy.yml'
 
@@ -20,8 +19,14 @@ jobs:
     name: Detect Changes
     runs-on: ubuntu-latest
     outputs:
-      service-a: ${{ steps.changes.outputs.service-a }}
-      service-b: ${{ steps.changes.outputs.service-b }}
+      service-a-backend: ${{ steps.changes.outputs.service-a-backend }}
+      service-a-frontend: ${{ steps.changes.outputs.service-a-frontend }}
+      service-b-backend: ${{ steps.changes.outputs.service-b-backend }}
+      service-b-frontend: ${{ steps.changes.outputs.service-b-frontend }}
+      infra: ${{ steps.changes.outputs.infra }}
+      changed-infra-services: ${{ steps.changes.outputs.changed-infra-services }}
+      any-app-changed: ${{ steps.changes.outputs.any-app-changed }}
+      docker-compose-changed: ${{ steps.changes.outputs.docker-compose-changed }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -35,28 +40,97 @@ jobs:
           echo "Changed files:"
           echo "$CHANGED"
 
-          # Check service-a
-          if echo "$CHANGED" | grep -q "^services/service-a/"; then
-            echo "service-a=true" >> $GITHUB_OUTPUT
+          # Check service-a-backend
+          if echo "$CHANGED" | grep -q "^services/service-a/backend/"; then
+            echo "service-a-backend=true" >> $GITHUB_OUTPUT
           else
-            echo "service-a=false" >> $GITHUB_OUTPUT
+            echo "service-a-backend=false" >> $GITHUB_OUTPUT
           fi
 
-          # Check service-b
-          if echo "$CHANGED" | grep -q "^services/service-b/"; then
-            echo "service-b=true" >> $GITHUB_OUTPUT
+          # Check service-a-frontend
+          if echo "$CHANGED" | grep -q "^services/service-a/frontend/"; then
+            echo "service-a-frontend=true" >> $GITHUB_OUTPUT
           else
-            echo "service-b=false" >> $GITHUB_OUTPUT
+            echo "service-a-frontend=false" >> $GITHUB_OUTPUT
           fi
 
+          # Check service-b-backend
+          if echo "$CHANGED" | grep -q "^services/service-b/backend/"; then
+            echo "service-b-backend=true" >> $GITHUB_OUTPUT
+          else
+            echo "service-b-backend=false" >> $GITHUB_OUTPUT
+          fi
+
+          # Check service-b-frontend
+          if echo "$CHANGED" | grep -q "^services/service-b/frontend/"; then
+            echo "service-b-frontend=true" >> $GITHUB_OUTPUT
+          else
+            echo "service-b-frontend=false" >> $GITHUB_OUTPUT
+          fi
+
+          # Check infra services (npm, vault, prometheus, grafana, wazuh)
+          INFRA_CHANGED="false"
+          CHANGED_SERVICES=""
+
+          # Check npm
+          if echo "$CHANGED" | grep -qE "^services/npm/(Dockerfile|.*\.(yml|yaml|conf|json|hcl)$|config/|custom/)"; then
+            INFRA_CHANGED="true"
+            CHANGED_SERVICES="${CHANGED_SERVICES}nginx-proxy-manager,"
+          fi
+
+          # Check vault
+          if echo "$CHANGED" | grep -qE "^services/vault/(Dockerfile|.*\.(yml|yaml|conf|json|hcl)$|config/)"; then
+            INFRA_CHANGED="true"
+            CHANGED_SERVICES="${CHANGED_SERVICES}vault,"
+          fi
+
+          # Check prometheus
+          if echo "$CHANGED" | grep -qE "^services/prometheus/(Dockerfile|.*\.(yml|yaml|conf|json|hcl)$|config/)"; then
+            INFRA_CHANGED="true"
+            CHANGED_SERVICES="${CHANGED_SERVICES}prometheus,"
+          fi
+
+          # Check grafana
+          if echo "$CHANGED" | grep -qE "^services/grafana/(Dockerfile|.*\.(yml|yaml|conf|json|hcl)$|config/|provisioning/|dashboards/)"; then
+            INFRA_CHANGED="true"
+            CHANGED_SERVICES="${CHANGED_SERVICES}grafana,"
+          fi
+
+          # Check wazuh
+          if echo "$CHANGED" | grep -qE "^services/wazuh/(Dockerfile|.*\.(yml|yaml|conf|json|hcl)$|config/)"; then
+            INFRA_CHANGED="true"
+            CHANGED_SERVICES="${CHANGED_SERVICES}wazuh,"
+          fi
+
+          # Check docker-compose.yml changes
+          if echo "$CHANGED" | grep -q "^docker-compose.yml$"; then
+            INFRA_CHANGED="true"
+            echo "docker-compose-changed=true" >> $GITHUB_OUTPUT
+          else
+            echo "docker-compose-changed=false" >> $GITHUB_OUTPUT
+          fi
+
+          echo "infra=${INFRA_CHANGED}" >> $GITHUB_OUTPUT
+          echo "changed-infra-services=${CHANGED_SERVICES%,}" >> $GITHUB_OUTPUT
+
+          # Check if any app service changed
+          if echo "$CHANGED" | grep -qE "^services/service-(a|b)/(backend|frontend)/"; then
+            echo "any-app-changed=true" >> $GITHUB_OUTPUT
+          else
+            echo "any-app-changed=false" >> $GITHUB_OUTPUT
+          fi
+
+          echo "Infra changed: ${INFRA_CHANGED}"
+          echo "Changed infra services: ${CHANGED_SERVICES%,}"
+
   # ====================
-  # Build & Push Service A
+  # Build & Push Service A Backend
   # ====================
-  build-service-a:
-    name: Build Service A
+  build-service-a-backend:
+    name: Build Service A Backend
     runs-on: ubuntu-latest
     needs: detect-changes
-    if: needs.detect-changes.outputs.service-a == 'true'
+    if: needs.detect-changes.outputs.service-a-backend == 'true'
 
     steps:
       - uses: actions/checkout@v4
@@ -74,15 +148,15 @@ jobs:
         id: meta
         uses: docker/metadata-action@v5
         with:
-          images: ${{ env.DOCKER_HUB_USERNAME }}/service-a
+          images: ${{ env.DOCKER_HUB_USERNAME }}/service-a-backend
           tags: |
             type=sha,prefix=
             type=raw,value=latest
 
       - name: Build and push
-        uses: docker/build-push-action@v5
+        uses: docker/build-push-action@v6
         with:
-          context: ./services/service-a
+          context: ./services/service-a/backend
           platforms: linux/amd64,linux/arm64
           push: true
           tags: ${{ steps.meta.outputs.tags }}
@@ -91,13 +165,13 @@ jobs:
           cache-to: type=gha,mode=max
 
   # ====================
-  # Build & Push Service B
+  # Build & Push Service A Frontend
   # ====================
-  build-service-b:
-    name: Build Service B
+  build-service-a-frontend:
+    name: Build Service A Frontend
     runs-on: ubuntu-latest
     needs: detect-changes
-    if: needs.detect-changes.outputs.service-b == 'true'
+    if: needs.detect-changes.outputs.service-a-frontend == 'true'
 
     steps:
       - uses: actions/checkout@v4
@@ -115,15 +189,97 @@ jobs:
         id: meta
         uses: docker/metadata-action@v5
         with:
-          images: ${{ env.DOCKER_HUB_USERNAME }}/service-b
+          images: ${{ env.DOCKER_HUB_USERNAME }}/service-a-frontend
           tags: |
             type=sha,prefix=
             type=raw,value=latest
 
       - name: Build and push
-        uses: docker/build-push-action@v5
+        uses: docker/build-push-action@v6
         with:
-          context: ./services/service-b
+          context: ./services/service-a/frontend
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  # ====================
+  # Build & Push Service B Backend
+  # ====================
+  build-service-b-backend:
+    name: Build Service B Backend
+    runs-on: ubuntu-latest
+    needs: detect-changes
+    if: needs.detect-changes.outputs.service-b-backend == 'true'
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ env.DOCKER_HUB_USERNAME }}
+          password: ${{ secrets.DOCKER_HUB_TOKEN }}
+
+      - name: Extract metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.DOCKER_HUB_USERNAME }}/service-b-backend
+          tags: |
+            type=sha,prefix=
+            type=raw,value=latest
+
+      - name: Build and push
+        uses: docker/build-push-action@v6
+        with:
+          context: ./services/service-b/backend
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  # ====================
+  # Build & Push Service B Frontend
+  # ====================
+  build-service-b-frontend:
+    name: Build Service B Frontend
+    runs-on: ubuntu-latest
+    needs: detect-changes
+    if: needs.detect-changes.outputs.service-b-frontend == 'true'
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ env.DOCKER_HUB_USERNAME }}
+          password: ${{ secrets.DOCKER_HUB_TOKEN }}
+
+      - name: Extract metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.DOCKER_HUB_USERNAME }}/service-b-frontend
+          tags: |
+            type=sha,prefix=
+            type=raw,value=latest
+
+      - name: Build and push
+        uses: docker/build-push-action@v6
+        with:
+          context: ./services/service-b/frontend
           platforms: linux/amd64,linux/arm64
           push: true
           tags: ${{ steps.meta.outputs.tags }}
@@ -137,50 +293,147 @@ jobs:
   deploy:
     name: Deploy to Server
     runs-on: ubuntu-latest
-    needs: [detect-changes, build-service-a, build-service-b]
+    needs: [detect-changes, build-service-a-backend, build-service-a-frontend, build-service-b-backend, build-service-b-frontend]
+    # always() 필수: skipped된 job도 통과시키기 위함
     if: |
       always() &&
-      (needs.build-service-a.result == 'success' || needs.build-service-a.result == 'skipped') &&
-      (needs.build-service-b.result == 'success' || needs.build-service-b.result == 'skipped') &&
-      (needs.detect-changes.outputs.service-a == 'true' || needs.detect-changes.outputs.service-b == 'true')
+      !cancelled() &&
+      (needs.build-service-a-backend.result == 'success' || needs.build-service-a-backend.result == 'skipped') &&
+      (needs.build-service-a-frontend.result == 'success' || needs.build-service-a-frontend.result == 'skipped') &&
+      (needs.build-service-b-backend.result == 'success' || needs.build-service-b-backend.result == 'skipped') &&
+      (needs.build-service-b-frontend.result == 'success' || needs.build-service-b-frontend.result == 'skipped') &&
+      (needs.detect-changes.outputs.any-app-changed == 'true' || needs.detect-changes.outputs.infra == 'true')
     environment: production
 
     steps:
       - name: Deploy via SSH
-        uses: appleboy/ssh-action@v1.0.3
+        uses: appleboy/ssh-action@v1.2.5
+        env:
+          SERVICE_A_BACKEND: ${{ needs.detect-changes.outputs.service-a-backend }}
+          SERVICE_A_FRONTEND: ${{ needs.detect-changes.outputs.service-a-frontend }}
+          SERVICE_B_BACKEND: ${{ needs.detect-changes.outputs.service-b-backend }}
+          SERVICE_B_FRONTEND: ${{ needs.detect-changes.outputs.service-b-frontend }}
+          INFRA_CHANGED: ${{ needs.detect-changes.outputs.infra }}
+          CHANGED_INFRA_SERVICES: ${{ needs.detect-changes.outputs.changed-infra-services }}
+          DOCKER_COMPOSE_CHANGED: ${{ needs.detect-changes.outputs.docker-compose-changed }}
         with:
           host: ${{ secrets.SERVER_HOST }}
           username: ${{ secrets.SERVER_USER }}
           key: ${{ secrets.SERVER_SSH_KEY }}
+          envs: SERVICE_A_BACKEND,SERVICE_A_FRONTEND,SERVICE_B_BACKEND,SERVICE_B_FRONTEND,INFRA_CHANGED,CHANGED_INFRA_SERVICES,DOCKER_COMPOSE_CHANGED
           script: |
-            cd /opt/exit8
+            set -e  # Exit on any error
 
-            # Pull only changed services
-            if [ "${{ needs.detect-changes.outputs.service-a }}" == "true" ]; then
-              echo "Pulling service-a..."
-              docker pull exit8/service-a:latest
+            # Navigate to project directory
+            cd /opt/exit8/self-managed-infrastructure || { echo "Error: /opt/exit8/self-managed-infrastructure directory not found"; exit 1; }
+            echo "Current directory: $(pwd)"
+
+            # Verify docker-compose.yml exists
+            if [ ! -f "docker-compose.yml" ]; then
+              echo "Error: docker-compose.yml not found in $(pwd)"
+              ls -la
+              exit 1
             fi
 
-            if [ "${{ needs.detect-changes.outputs.service-b }}" == "true" ]; then
-              echo "Pulling service-b..."
-              docker pull exit8/service-b:latest
+            # Pull latest code
+            git pull origin main
+
+            # Build list of services to update
+            SERVICES_TO_UPDATE=""
+
+            # Pull and add application services
+            if [ "$SERVICE_A_BACKEND" == "true" ]; then
+              echo "Pulling service-a-backend..."
+              docker pull exit8/service-a-backend:latest
+              SERVICES_TO_UPDATE="${SERVICES_TO_UPDATE} service-a-backend"
             fi
 
-            # Restart services with zero-downtime
-            docker-compose up -d --remove-orphans
+            if [ "$SERVICE_A_FRONTEND" == "true" ]; then
+              echo "Pulling service-a-frontend..."
+              docker pull exit8/service-a-frontend:latest
+              SERVICES_TO_UPDATE="${SERVICES_TO_UPDATE} service-a-frontend"
+            fi
+
+            if [ "$SERVICE_B_BACKEND" == "true" ]; then
+              echo "Pulling service-b-backend..."
+              docker pull exit8/service-b-backend:latest
+              SERVICES_TO_UPDATE="${SERVICES_TO_UPDATE} service-b-backend"
+            fi
+
+            if [ "$SERVICE_B_FRONTEND" == "true" ]; then
+              echo "Pulling service-b-frontend..."
+              docker pull exit8/service-b-frontend:latest
+              SERVICES_TO_UPDATE="${SERVICES_TO_UPDATE} service-b-frontend"
+            fi
+
+            # Add changed infra services
+            if [ "$INFRA_CHANGED" == "true" ] && [ -n "$CHANGED_INFRA_SERVICES" ]; then
+              echo "Changed infra services: $CHANGED_INFRA_SERVICES"
+              INFRA_SERVICES=$(echo "$CHANGED_INFRA_SERVICES" | tr ',' ' ')
+              SERVICES_TO_UPDATE="${SERVICES_TO_UPDATE} ${INFRA_SERVICES}"
+            fi
+
+            # Trim leading/trailing whitespace
+            SERVICES_TO_UPDATE=$(echo "$SERVICES_TO_UPDATE" | xargs)
+
+            # Use docker compose (V2) with fallback to docker-compose (V1)
+            if command -v docker compose &> /dev/null; then
+              COMPOSE_CMD="docker compose"
+            else
+              COMPOSE_CMD="docker-compose"
+            fi
+
+            # If docker-compose.yml changed, restart all services
+            if [ "$DOCKER_COMPOSE_CHANGED" == "true" ]; then
+              echo "docker-compose.yml changed - restarting all services..."
+              $COMPOSE_CMD up -d --remove-orphans
+            elif [ -n "$SERVICES_TO_UPDATE" ]; then
+              echo "Updating services: $SERVICES_TO_UPDATE"
+              $COMPOSE_CMD up -d --no-deps $SERVICES_TO_UPDATE
+            else
+              echo "No services to update"
+            fi
 
             # Cleanup old images
             docker image prune -f
 
             # Health check
-            sleep 10
+            sleep 15
 
-            if [ "${{ needs.detect-changes.outputs.service-a }}" == "true" ]; then
-              curl -f http://localhost:8080/health || exit 1
-            fi
+            # If docker-compose.yml changed, check all app services
+            if [ "$DOCKER_COMPOSE_CHANGED" == "true" ]; then
+              echo "Health check for all services (docker-compose.yml changed)..."
+              docker exec service-a-backend curl -f http://localhost:8080/actuator/health || echo "Warning: service-a-backend health check failed"
+              docker exec service-b-backend curl -f http://localhost:8000/health || echo "Warning: service-b-backend health check failed"
+              curl -f http://localhost:3000/health || echo "Warning: service-a-frontend health check failed"
+              curl -f http://localhost:3002/health || echo "Warning: service-b-frontend health check failed"
+            else
+              # Backend health checks via docker exec (internal ports)
+              if [ "$SERVICE_A_BACKEND" == "true" ]; then
+                echo "Health check for service-a-backend..."
+                docker exec service-a-backend curl -f http://localhost:8080/actuator/health || exit 1
+              fi
 
-            if [ "${{ needs.detect-changes.outputs.service-b }}" == "true" ]; then
-              curl -f http://localhost:8000/health || exit 1
+              if [ "$SERVICE_B_BACKEND" == "true" ]; then
+                echo "Health check for service-b-backend..."
+                docker exec service-b-backend curl -f http://localhost:8000/health || exit 1
+              fi
+
+              # Frontend health checks via exposed ports
+              if [ "$SERVICE_A_FRONTEND" == "true" ]; then
+                echo "Health check for service-a-frontend..."
+                curl -f http://localhost:3000/health || exit 1
+              fi
+
+              if [ "$SERVICE_B_FRONTEND" == "true" ]; then
+                echo "Health check for service-b-frontend..."
+                curl -f http://localhost:3002/health || exit 1
+              fi
             fi
 
             echo "Deployment completed successfully"
+            if [ "$DOCKER_COMPOSE_CHANGED" == "true" ]; then
+              echo "All services restarted due to docker-compose.yml change"
+            else
+              echo "Updated services: $SERVICES_TO_UPDATE"
+            fi

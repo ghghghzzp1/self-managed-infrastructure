@@ -1,6 +1,9 @@
 from fastapi import FastAPI
+<<<<<<< HEAD
 from prometheus_fastapi_instrumentator import Instrumentator
 from sqlalchemy import select
+=======
+>>>>>>> 2d1f29cdd706c757d036fb749377e40aa2bb19b1
 
 from app.core.config import settings
 from app.core.middleware import SecurityLoggingMiddleware
@@ -9,6 +12,7 @@ from app.routers import auth
 from app.database.session import engine, AsyncSessionLocal
 from app.models import Base, User
 
+<<<<<<< HEAD
 app = FastAPI(title=settings.PROJECT_NAME)
 
 app.add_middleware(SecurityLoggingMiddleware)
@@ -42,3 +46,20 @@ async def startup_event():
             logger.info("SERVER_STARTED", extra={"msg": "Admin user initialized"})
         
     logger.info("SERVER_STARTED", extra={"service": "service-b"})
+=======
+
+@app.get("/health")
+def health():
+    return {
+        "status": "ok",
+        "service": "service-b-backend"
+    }
+
+
+@app.get("/")
+def root():
+    return {"message": "Service B API", "version": "0.0.1"}
+
+
+# TODO: Add your API endpoints here
+>>>>>>> 2d1f29cdd706c757d036fb749377e40aa2bb19b1
