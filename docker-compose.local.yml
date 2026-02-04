@@ -23,7 +23,7 @@ services:
     volumes:
       - postgres_data:/var/lib/postgresql/data
     networks:
-      - backend
+      - db
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-admin}"]
       interval: 10s
@@ -40,7 +40,7 @@ services:
     volumes:
       - redis_data:/data
     networks:
-      - backend
+      - db
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 10s
@@ -64,6 +64,7 @@ services:
       JAVA_OPTS: "-Xms128m -Xmx256m"
     networks:
       - backend
+      - db
     depends_on:
       postgres:
         condition: service_healthy
@@ -106,6 +107,7 @@ services:
       - "8000:8000"  # 로컬에서는 직접 접근 가능하도록 포트 노출
     networks:
       - backend
+      - db
     depends_on:
       postgres:
         condition: service_healthy
@@ -141,6 +143,8 @@ networks:
   frontend:
     driver: bridge
   backend:
+    driver: bridge
+  db:
     driver: bridge
 
 volumes:
