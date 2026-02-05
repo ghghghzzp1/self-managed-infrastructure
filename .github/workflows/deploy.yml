@@ -331,6 +331,9 @@ jobs:
             # Fix git ownership issue (required for GitHub Actions SSH user)
             git config --global --add safe.directory /opt/exit8/self-managed-infrastructure
 
+            # Fix directory permissions for git operations
+            sudo chown -R $USER:$USER /opt/exit8/self-managed-infrastructure
+
             # Verify docker-compose.yml exists
             if [ ! -f "docker-compose.yml" ]; then
               echo "Error: docker-compose.yml not found in $(pwd)"
