@@ -198,7 +198,7 @@ jobs:
         uses: docker/build-push-action@v6
         with:
           context: ./services/service-a/frontend
-          platforms: linux/amd64,linux/arm64
+          platforms: linux/amd64
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
@@ -239,7 +239,7 @@ jobs:
         uses: docker/build-push-action@v6
         with:
           context: ./services/service-b/backend
-          platforms: linux/amd64,linux/arm64
+          platforms: linux/amd64
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
@@ -280,7 +280,7 @@ jobs:
         uses: docker/build-push-action@v6
         with:
           context: ./services/service-b/frontend
-          platforms: linux/amd64,linux/arm64
+          platforms: linux/amd64
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
