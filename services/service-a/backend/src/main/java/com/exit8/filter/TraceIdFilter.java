@@ -1,5 +1,6 @@
 package com.exit8.filter;
 
+import com.exit8.logging.TraceContext;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
@@ -15,9 +16,6 @@ import java.util.UUID;
 @Component
 public class TraceIdFilter extends OncePerRequestFilter {
 
-    /** MDC에서 사용할 trace_id 키 */
-    public static final String TRACE_ID = "trace_id";
-
     // HTTP 요청 단위 trace_id 생성 및 MDC 전파용 Filter
     @Override
     protected void doFilterInternal(
@@ -31,7 +29,11 @@ public class TraceIdFilter extends OncePerRequestFilter {
                 .orElse(UUID.randomUUID().toString());
 
         // MDC에 trace_id 저장 → 이후 모든 로그에 자동 포함
-        MDC.put(TRACE_ID, traceId);
+        MDC.put(TraceContext.TRACE_ID_KEY, traceId);
+
+        // 응답 헤더에 trace_id를 넣어주면 클라이언트(프론트)에서 장애 문의 시
+        // 이 ID를 알려줄 수 있어 추적 가능
+        response.setHeader("X-Trace-Id", traceId);
 
         try {
             filterChain.doFilter(request, response);
