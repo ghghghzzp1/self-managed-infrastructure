@@ -1,5 +1,5 @@
 # ---------- build stage ----------
-FROM eclipse-temurin:17-jdk-alpine AS build
+FROM --platform=linux/amd64 eclipse-temurin:17-jdk-alpine AS build
 
 WORKDIR /app
 
@@ -20,7 +20,7 @@ COPY src src
 RUN ./gradlew bootJar --no-daemon
 
 # ---------- runtime stage ----------
-FROM eclipse-temurin:17-jre-alpine
+FROM --platform=linux/amd64 eclipse-temurin:17-jre-alpine
 
 WORKDIR /app
 
