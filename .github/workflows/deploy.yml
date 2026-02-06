@@ -423,8 +423,9 @@ jobs:
             # Cleanup old images
             docker image prune -f
 
-            # Health check
-            sleep 15
+            # Health check - wait for services to be ready (Spring Boot needs time to start)
+            echo "Waiting 30 seconds for services to be ready..."
+            sleep 30
 
             # If docker-compose.yml changed, check all app services
             if [ "$DOCKER_COMPOSE_CHANGED" == "true" ]; then
