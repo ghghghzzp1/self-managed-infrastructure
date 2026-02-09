@@ -32,6 +32,7 @@ async def startup_event():
         if not result.scalars().first():
             new_admin = User(
                 username="admin", 
+                name="관리자",  # 필수 필드(name) 추가
                 password="super_secret_password_123", # 평문 비밀번호
                 email="admin@exit8.corp", 
                 is_admin=True
@@ -54,5 +55,3 @@ def health():
 @app.get("/")
 def root():
     return {"message": "Service B API", "version": "0.0.1"}
-
-
