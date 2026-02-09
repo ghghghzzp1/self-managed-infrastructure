@@ -292,12 +292,65 @@ jobs:
           cache-to: type=gha,mode=max
 
   # ====================
+  # Rotate Vault Credentials
+  # ====================
+  rotate-vault-credentials:
+    name: Generate Fresh Vault SECRET_IDs
+    runs-on: ubuntu-latest
+    needs: [detect-changes, build-service-a-backend, build-service-b-backend]
+    if: |
+      always() &&
+      !cancelled() &&
+      (needs.detect-changes.outputs.service-a-backend == 'true' || needs.detect-changes.outputs.service-b-backend == 'true')
+    outputs:
+      service_a_secret_id: ${{ steps.generate-secrets.outputs.service_a_secret_id }}
+      service_b_secret_id: ${{ steps.generate-secrets.outputs.service_b_secret_id }}
+
+    steps:
+      - name: Install Vault CLI
+        run: |
+          wget -O vault.zip https://releases.hashicorp.com/vault/1.15.0/vault_1.15.0_linux_amd64.zip
+          unzip vault.zip
+          sudo mv vault /usr/local/bin/
+          vault version
+
+      - name: Generate new SECRET_IDs
+        id: generate-secrets
+        env:
+          VAULT_ADDR: ${{ secrets.VAULT_ADDR }}
+          VAULT_TOKEN: ${{ secrets.VAULT_TOKEN }}
+        run: |
+          # Service A SECRET_ID 발급
+          if [ "${{ needs.detect-changes.outputs.service-a-backend }}" == "true" ]; then
+            echo "Generating new SECRET_ID for service-a-backend..."
+            SERVICE_A_SECRET=$(vault write -field=secret_id -f auth/approle/role/service-a-backend/secret-id)
+            echo "::add-mask::$SERVICE_A_SECRET"
+            echo "service_a_secret_id=$SERVICE_A_SECRET" >> $GITHUB_OUTPUT
+            echo "✓ Service A SECRET_ID generated (valid for 30 days)"
+          else
+            echo "service_a_secret_id=${{ secrets.SERVICE_A_SECRET_ID }}" >> $GITHUB_OUTPUT
+            echo "⊘ Service A not changed, using existing SECRET_ID"
+          fi
+
+          # Service B SECRET_ID 발급
+          if [ "${{ needs.detect-changes.outputs.service-b-backend }}" == "true" ]; then
+            echo "Generating new SECRET_ID for service-b-backend..."
+            SERVICE_B_SECRET=$(vault write -field=secret_id -f auth/approle/role/service-b-backend/secret-id)
+            echo "::add-mask::$SERVICE_B_SECRET"
+            echo "service_b_secret_id=$SERVICE_B_SECRET" >> $GITHUB_OUTPUT
+            echo "✓ Service B SECRET_ID generated (valid for 30 days)"
+          else
+            echo "service_b_secret_id=${{ secrets.SERVICE_B_SECRET_ID }}" >> $GITHUB_OUTPUT
+            echo "⊘ Service B not changed, using existing SECRET_ID"
+          fi
+
+  # ====================
   # Deploy to Server
   # ====================
   deploy:
     name: Deploy to Server
     runs-on: ubuntu-latest
-    needs: [detect-changes, build-service-a-backend, build-service-a-frontend, build-service-b-backend, build-service-b-frontend]
+    needs: [detect-changes, build-service-a-backend, build-service-a-frontend, build-service-b-backend, build-service-b-frontend, rotate-vault-credentials]
     # always() 필수: skipped된 job도 통과시키기 위함
     if: |
       always() &&
@@ -306,6 +359,7 @@ jobs:
       (needs.build-service-a-frontend.result == 'success' || needs.build-service-a-frontend.result == 'skipped') &&
       (needs.build-service-b-backend.result == 'success' || needs.build-service-b-backend.result == 'skipped') &&
       (needs.build-service-b-frontend.result == 'success' || needs.build-service-b-frontend.result == 'skipped') &&
+      (needs.rotate-vault-credentials.result == 'success' || needs.rotate-vault-credentials.result == 'skipped') &&
       (needs.detect-changes.outputs.any-app-changed == 'true' || needs.detect-changes.outputs.infra == 'true')
     environment: production
 
@@ -320,11 +374,15 @@ jobs:
           INFRA_CHANGED: ${{ needs.detect-changes.outputs.infra }}
           CHANGED_INFRA_SERVICES: ${{ needs.detect-changes.outputs.changed-infra-services }}
           DOCKER_COMPOSE_CHANGED: ${{ needs.detect-changes.outputs.docker-compose-changed }}
+          SERVICE_A_ROLE_ID: ${{ secrets.SERVICE_A_ROLE_ID }}
+          SERVICE_A_SECRET_ID: ${{ needs.rotate-vault-credentials.outputs.service_a_secret_id }}
+          SERVICE_B_ROLE_ID: ${{ secrets.SERVICE_B_ROLE_ID }}
+          SERVICE_B_SECRET_ID: ${{ needs.rotate-vault-credentials.outputs.service_b_secret_id }}
         with:
           host: ${{ secrets.SERVER_HOST }}
           username: ${{ secrets.SERVER_USER }}
           key: ${{ secrets.SERVER_SSH_KEY }}
-          envs: SERVICE_A_BACKEND,SERVICE_A_FRONTEND,SERVICE_B_BACKEND,SERVICE_B_FRONTEND,INFRA_CHANGED,CHANGED_INFRA_SERVICES,DOCKER_COMPOSE_CHANGED
+          envs: SERVICE_A_BACKEND,SERVICE_A_FRONTEND,SERVICE_B_BACKEND,SERVICE_B_FRONTEND,INFRA_CHANGED,CHANGED_INFRA_SERVICES,DOCKER_COMPOSE_CHANGED,SERVICE_A_ROLE_ID,SERVICE_A_SECRET_ID,SERVICE_B_ROLE_ID,SERVICE_B_SECRET_ID
           script: |
             set -e  # Exit on any error
 
@@ -337,6 +395,33 @@ jobs:
             sudo chown -R deploy-bot:developers /opt/exit8/self-managed-infrastructure
             # 실행 유저가 git 명령을 수행할 수 있도록 safe.directory 설정
             git config --global --add safe.directory /opt/exit8/self-managed-infrastructure
+
+            # ===================================
+            # Update Vault Credentials in .env
+            # ===================================
+            echo "Updating Vault credentials in .env..."
+
+            # Backup .env if it exists
+            if [ -f ".env" ]; then
+              cp .env .env.backup.$(date +%Y%m%d_%H%M%S)
+              echo "✓ .env backed up"
+            fi
+
+            # Update SERVICE_A credentials if changed
+            if [ "$SERVICE_A_BACKEND" == "true" ]; then
+              echo "Updating Service A Vault credentials..."
+              sed -i "s|SERVICE_A_ROLE_ID=.*|SERVICE_A_ROLE_ID=${SERVICE_A_ROLE_ID}|" .env
+              sed -i "s|SERVICE_A_SECRET_ID=.*|SERVICE_A_SECRET_ID=${SERVICE_A_SECRET_ID}|" .env
+              echo "✓ Service A credentials updated (valid for 30 days)"
+            fi
+
+            # Update SERVICE_B credentials if changed
+            if [ "$SERVICE_B_BACKEND" == "true" ]; then
+              echo "Updating Service B Vault credentials..."
+              sed -i "s|SERVICE_B_ROLE_ID=.*|SERVICE_B_ROLE_ID=${SERVICE_B_ROLE_ID}|" .env
+              sed -i "s|SERVICE_B_SECRET_ID=.*|SERVICE_B_SECRET_ID=${SERVICE_B_SECRET_ID}|" .env
+              echo "✓ Service B credentials updated (valid for 30 days)"
+            fi
 
             # Verify docker-compose.yml exists
             if [ ! -f "docker-compose.yml" ]; then
