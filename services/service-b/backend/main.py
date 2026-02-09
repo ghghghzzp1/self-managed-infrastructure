@@ -32,13 +32,14 @@ async def startup_event():
         if not result.scalars().first():
             new_admin = User(
                 username="admin", 
-                password="super_secret_password_123", # 평문 비밀번호
+                name="관리자",  # 필수 필드(name)
+                password="super_secret_password_123", 
                 email="admin@exit8.corp", 
                 is_admin=True
             )
             db.add(new_admin)
             await db.commit()
-            logger.info("SERVER_STARTED", extra={"msg": "Admin user initialized"})
+            logger.info("SERVER_STARTED", extra={"detail": "Admin user initialized"})
         
     logger.info("SERVER_STARTED", extra={"service": "service-b"})
 
@@ -54,5 +55,3 @@ def health():
 @app.get("/")
 def root():
     return {"message": "Service B API", "version": "0.0.1"}
-
-
