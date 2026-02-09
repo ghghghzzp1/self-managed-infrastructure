@@ -10,7 +10,7 @@ version = '0.0.1-SNAPSHOT'
 
 java {
     toolchain {
-        // Java 17 혹은 21 모두 가능합니다.
+        // Java 17 혹은 21 모두 가능
         languageVersion = JavaLanguageVersion.of(17)
     }
 }
@@ -20,7 +20,7 @@ repositories {
 }
 
 bootRun {
-    // .env 있으면 → .env, 없으면 → local
+    // .env 있으면 → .env 로드
     def envFile = file(".env")
     if (envFile.exists()) {
         envFile.readLines().each { line ->
@@ -31,9 +31,18 @@ bootRun {
         }
     }
 
+    // Spring Profile (기본값: local)
     environment "SPRING_PROFILES_ACTIVE",
             System.getenv("SPRING_PROFILES_ACTIVE") ?: "local"
+
+    // Vault 필수 환경 변수 (없으면 기본값)
+    environment "VAULT_URI",
+            System.getenv("VAULT_URI") ?: "http://localhost:8200"
+
+    environment "VAULT_TOKEN",
+            System.getenv("VAULT_TOKEN") ?: "root-token"
 }
+
 
 dependencies {
     // Web & AOP
@@ -63,7 +72,17 @@ dependencies {
 
     // Logstash Logback Encoder 추가
     implementation 'net.logstash.logback:logstash-logback-encoder:7.4'
+
+    // vault
+    implementation 'org.springframework.cloud:spring-cloud-starter-vault-config'
 }
+
+dependencyManagement {
+    imports {
+        mavenBom "org.springframework.cloud:spring-cloud-dependencies:2024.0.0"
+    }
+}
+
 
 tasks.named('test') {
     useJUnitPlatform()

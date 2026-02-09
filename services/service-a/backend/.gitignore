@@ -18,3 +18,6 @@ out/
 # shell
 deploy.bat
 deploy.ps1
+
+# gradle temp
+gradle/wrapper/temp
