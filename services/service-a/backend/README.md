@@ -19,7 +19,8 @@
 10. [로깅 전략](#10-로깅-전략)
 11. [Docker 기반 개발 환경](#11-docker-기반-개발-환경)
 12. [로컬 Docker 테스트 절차](#12-로컬-docker-테스트-절차)
-13. [앞으로의 확장 / 완료 현황 정리](#13-앞으로의-확장--완료-현황-정리)
+13. [Vault 연동](#13-Vault-연동)
+14. [앞으로의 확장 / 완료 현황 정리](#14-앞으로의-확장--완료-현황-정리)
 
 ---
 
@@ -92,7 +93,6 @@ services/service-a/backend/
 │   ├── filter/            # HTTP 진입 trace_id 생성
 │   │   └── TraceIdFilter.java
 │   │
-│   │
 │   ├── logging/           # AOP 기반 관측 로깅
 │   │   ├── LogAspect.java                  # LOAD_START / END / FAIL 트리거
 │   │   ├── LogLevelPolicy.java             # INFO / WARN / ERROR 판단
@@ -131,8 +131,11 @@ services/service-a/backend/
 ```
 SPRING_PROFILES_ACTIVE=local ./gradlew bootRun
 ```
-- Gradle bootRun에 기본값 local 설정됨
-- 추후 Vault와 연동하면 달라질 수 있음 (.env) 
+- Gradle `bootRun` 기본 프로필은 `local`
+- 실행 환경 구분은 `SPRING_PROFILES_ACTIVE` 기준
+- Vault 연동 여부와 관계없이 프로필 전략은 동일
+- Vault 접근 정보는 실행 시점에 환경 변수로 주입
+  (`VAULT_URI`, `VAULT_TOKEN`)
 
 ---
 
@@ -591,7 +594,47 @@ curl http://localhost:8080/actuator/health
 
 ---
 
-## 13. 앞으로의 확장 / 완료 현황 정리
+## 13. Vault 연동
+- DB 자격 증명을 애플리케이션 외부로 분리하기 위해 Spring Cloud Vault 사용
+- Vault 기반 설정 로딩 구조를 검증
+
+### Spring Cloud Vault Client 연동
+- 애플리케이션 기동 시 Vault에서 설정 값을 로드
+- Vault KV(v2)를 Spring PropertySource로 통합
+
+### DB 자격 증명 완전 외부화
+- spring.datasource.username / password 하드코딩 제거
+- Vault에 저장된 db.username, db.password를 명시적으로 매핑
+
+### 환경별 경로 분리
+- local / docker 프로필에 따라 Vault 경로 분리
+```
+secret/service-a-backend/local
+secret/service-a-backend/docker
+```
+
+### Docker 실행 환경 검증
+- Vault 컨테이너와 동일 Docker 네트워크에서 실행 
+- `VAULT_URI`, `VAULT_TOKEN은` 환경 변수로만 주입
+
+#### 로컬 검증 환경 
+- Docker 기반 Vault dev mode 사용 
+- KV v2 엔진 활성화 
+- 컨테이너 재시작 시 데이터 영속성 없음 (연동 구조 검증 목적)
+
+#### 검증 항목
+- Spring Cloud Vault Client 기동 시 Vault 연결 
+- 프로필(local / docker)별 Vault 경로 조회 
+- DB 자격 증명 로딩 성공 / 실패 시 기동 결과
+
+### 의도적으로 제외한 범위
+- Secret rotation 
+- Vault Auth (AppRole, Kubernetes 등)
+- Vault HA / TLS 구성
+
+---
+
+## 14. 앞으로의 확장 / 완료 현황 정리
 
 ### ✅ 이미 완료된 항목
 1. Resilience4j 기반 차단 시나리오
@@ -630,6 +673,13 @@ curl http://localhost:8080/actuator/health
    - `logstash-logback-encoder` 적용
    - `trace_id / level / duration / event` 필드 구조화
    - 현재는 텍스트 로그 중심으로 실험, JSON 로그는 병행 가능 상태
+8. Vault 연동
+   - Spring Cloud Vault Client 연동 구조 검증 완료
+   - Vault KV(v2) 기반 PostgreSQL 자격 증명 동적 로딩
+     - DB 자격 증명 하드코딩 완전 제거
+   - local / docker 프로필별 Vault 경로 분리 적용
+   - 실제 Docker 서비스 실행 경로에서 Vault 연동 기동 확인
+   - 운영 고도화(Secret rotation, Auth, HA)는 의도적으로 제외
 
 <br>
 
@@ -640,24 +690,17 @@ curl http://localhost:8080/actuator/health
    - 향후:
      - `LogAspect → SystemLog` 저장
      - 배치 기반 백업 후 truncate 전략 적용
-2. Vault 연동
-   - Secret rotation 시나리오 실험
-   - DB / Redis 자격 증명 동적 로딩
-   - 현재는 `.env + profile` 기반 단순화
-   - 추후:
-     - Spring Cloud Vault Client 적용
-     - Secret rotation 시나리오 실험
-3. Prometheus 메트릭 확장
+2. Prometheus 메트릭 확장
    - 현재: Actuator 기본 메트릭 + 일부 커스텀
    - 미완:
      - HTTP 요청 수 / 응답 시간 세분화
      - CircuitBreaker 상태 메트릭 명시적 노출
    - 추후:
      - Custom Meter (Timer / Counter) 추가
-4. DB 백업 및 로그 정리 시나리오
+3. DB 백업 및 로그 정리 시나리오
    - 로그 정리 주기
    - 백업 정책 실험
-5. 외부 부하 테스트 연계
+4. 외부 부하 테스트 연계
    - 현재: 부하 유발 API만 구현
    - 미완: 외부 부하 도구 연계
    - 미완:
@@ -665,10 +708,10 @@ curl http://localhost:8080/actuator/health
      - 동시 사용자 증가에 따른
      - DB 커넥션 풀 고갈
      - CircuitBreaker OPEN 시점 분석
-6. Redis 캐싱 실험
+5. Redis 캐싱 실험
    - READ 시 캐싱 적용
    - Read Replica + Cache 비교 실험
-7. Spring Security 도입
+6. Spring Security 도입
    - 프론트엔드 연동 전 필수 단계
    - 무제한 호출 / 오남용 방지
    - 실험용 API 보호

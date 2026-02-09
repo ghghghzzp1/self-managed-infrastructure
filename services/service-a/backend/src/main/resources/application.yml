@@ -10,6 +10,18 @@ spring:
       hibernate:
         format_sql: true
 
+  config:
+    import: vault://
+
+  cloud:
+    vault:
+      uri: ${VAULT_URI:http://localhost:8200}
+      token: ${VAULT_TOKEN}
+      kv:
+        enabled: true
+        backend: secret
+        application-name: service-a-backend
+
 server:
   port: 8080
 
