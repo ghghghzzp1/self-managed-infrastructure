@@ -14,8 +14,12 @@ NC='\033[0m' # No Color
 # Configuration
 VAULT_ADDR="${VAULT_ADDR:-http://localhost:8200}"
 VAULT_TOKEN="${VAULT_TOKEN:-}"
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 POLICY_DIR="${SCRIPT_DIR}/policies"
+
+# Debug: Print paths
+echo -e "${YELLOW}Script directory: ${SCRIPT_DIR}${NC}"
+echo -e "${YELLOW}Policy directory: ${POLICY_DIR}${NC}"
 
 echo -e "${GREEN}=== Vault AppRole Initialization ===${NC}"
 echo ""
