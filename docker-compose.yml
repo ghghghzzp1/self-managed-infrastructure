@@ -49,6 +49,8 @@ services:
       -c maintenance_work_mem=128MB
       -c effective_cache_size=512MB
       -c max_connections=100
+    ports:
+      - "5432:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
     networks:
