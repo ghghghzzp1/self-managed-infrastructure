@@ -14,7 +14,7 @@ NC='\033[0m' # No Color
 # Configuration
 VAULT_ADDR="${VAULT_ADDR:-http://localhost:8200}"
 VAULT_TOKEN="${VAULT_TOKEN:-}"
-SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+SCRIPT_DIR="$( cd -- "$( dirname -- "${BASH_SOURCE[0]}" )" &> /dev/null && pwd )"
 POLICY_DIR="${SCRIPT_DIR}/policies"
 
 # Debug: Print paths
