@@ -292,69 +292,12 @@ jobs:
           cache-to: type=gha,mode=max
 
   # ====================
-  # Rotate Vault Credentials
-  # ====================
-  rotate-vault-credentials:
-    name: Generate Fresh Vault SECRET_IDs
-    runs-on: ubuntu-latest
-    needs: [detect-changes, build-service-a-backend, build-service-b-backend]
-    if: |
-      always() &&
-      !cancelled() &&
-      (needs.detect-changes.outputs.service-a-backend == 'true' || needs.detect-changes.outputs.service-b-backend == 'true')
-    outputs:
-      service_a_secret_id: ${{ steps.generate-secrets.outputs.service_a_secret_id }}
-      service_b_secret_id: ${{ steps.generate-secrets.outputs.service_b_secret_id }}
-
-    steps:
-      - name: Install Vault CLI
-        run: |
-          wget -O vault.zip https://releases.hashicorp.com/vault/1.15.0/vault_1.15.0_linux_amd64.zip
-          unzip vault.zip
-          sudo mv vault /usr/local/bin/
-          vault version
-
-      - name: Generate new SECRET_IDs (Isolated)
-        id: generate-secrets
-        env:
-          VAULT_ADDR: ${{ secrets.VAULT_ADDR }}
-        run: |
-          # Service A SECRET_ID 발급 (서비스 A 전용 토큰 사용)
-          if [ "${{ needs.detect-changes.outputs.service-a-backend }}" == "true" ]; then
-            echo "Generating new SECRET_ID for service-a-backend..."
-            export VAULT_TOKEN="${{ secrets.SERVICE_A_MANAGER_TOKEN }}"
-            SERVICE_A_SECRET=$(vault write -field=secret_id -f auth/approle/role/service-a-backend/secret-id)
-            echo "::add-mask::$SERVICE_A_SECRET"
-            echo "service_a_secret_id=$SERVICE_A_SECRET" >> $GITHUB_OUTPUT
-            echo "✓ Service A SECRET_ID generated (valid for 30 days)"
-            echo "✓ Used isolated SERVICE_A_MANAGER_TOKEN"
-          else
-            echo "service_a_secret_id=${{ secrets.SERVICE_A_SECRET_ID }}" >> $GITHUB_OUTPUT
-            echo "⊘ Service A not changed, using existing SECRET_ID"
-          fi
-
-          # Service B SECRET_ID 발급 (서비스 B 전용 토큰 사용)
-          if [ "${{ needs.detect-changes.outputs.service-b-backend }}" == "true" ]; then
-            echo "Generating new SECRET_ID for service-b-backend..."
-            export VAULT_TOKEN="${{ secrets.SERVICE_B_MANAGER_TOKEN }}"
-            SERVICE_B_SECRET=$(vault write -field=secret_id -f auth/approle/role/service-b-backend/secret-id)
-            echo "::add-mask::$SERVICE_B_SECRET"
-            echo "service_b_secret_id=$SERVICE_B_SECRET" >> $GITHUB_OUTPUT
-            echo "✓ Service B SECRET_ID generated (valid for 30 days)"
-            echo "✓ Used isolated SERVICE_B_MANAGER_TOKEN"
-          else
-            echo "service_b_secret_id=${{ secrets.SERVICE_B_SECRET_ID }}" >> $GITHUB_OUTPUT
-            echo "⊘ Service B not changed, using existing SECRET_ID"
-          fi
-
-  # ====================
   # Deploy to Server
   # ====================
   deploy:
     name: Deploy to Server
     runs-on: ubuntu-latest
-    needs: [detect-changes, build-service-a-backend, build-service-a-frontend, build-service-b-backend, build-service-b-frontend, rotate-vault-credentials]
-    # always() 필수: skipped된 job도 통과시키기 위함
+    needs: [detect-changes, build-service-a-backend, build-service-a-frontend, build-service-b-backend, build-service-b-frontend]
     if: |
       always() &&
       !cancelled() &&
@@ -362,7 +305,6 @@ jobs:
       (needs.build-service-a-frontend.result == 'success' || needs.build-service-a-frontend.result == 'skipped') &&
       (needs.build-service-b-backend.result == 'success' || needs.build-service-b-backend.result == 'skipped') &&
       (needs.build-service-b-frontend.result == 'success' || needs.build-service-b-frontend.result == 'skipped') &&
-      (needs.rotate-vault-credentials.result == 'success' || needs.rotate-vault-credentials.result == 'skipped') &&
       (needs.detect-changes.outputs.any-app-changed == 'true' || needs.detect-changes.outputs.infra == 'true')
     environment: production
 
@@ -379,15 +321,15 @@ jobs:
           DOCKER_COMPOSE_CHANGED: ${{ needs.detect-changes.outputs.docker-compose-changed }}
           VAULT_ADDR: ${{ secrets.VAULT_ADDR }}
           INFRA_MANAGER_TOKEN: ${{ secrets.INFRA_MANAGER_TOKEN }}
+          SERVICE_A_MANAGER_TOKEN: ${{ secrets.SERVICE_A_MANAGER_TOKEN }}
+          SERVICE_B_MANAGER_TOKEN: ${{ secrets.SERVICE_B_MANAGER_TOKEN }}
           SERVICE_A_ROLE_ID: ${{ secrets.SERVICE_A_ROLE_ID }}
-          SERVICE_A_SECRET_ID: ${{ needs.rotate-vault-credentials.outputs.service_a_secret_id }}
           SERVICE_B_ROLE_ID: ${{ secrets.SERVICE_B_ROLE_ID }}
-          SERVICE_B_SECRET_ID: ${{ needs.rotate-vault-credentials.outputs.service_b_secret_id }}
         with:
           host: ${{ secrets.SERVER_HOST }}
           username: ${{ secrets.SERVER_USER }}
           key: ${{ secrets.SERVER_SSH_KEY }}
-          envs: SERVICE_A_BACKEND,SERVICE_A_FRONTEND,SERVICE_B_BACKEND,SERVICE_B_FRONTEND,INFRA_CHANGED,CHANGED_INFRA_SERVICES,DOCKER_COMPOSE_CHANGED,VAULT_ADDR,INFRA_MANAGER_TOKEN,SERVICE_A_ROLE_ID,SERVICE_A_SECRET_ID,SERVICE_B_ROLE_ID,SERVICE_B_SECRET_ID
+          envs: SERVICE_A_BACKEND,SERVICE_A_FRONTEND,SERVICE_B_BACKEND,SERVICE_B_FRONTEND,INFRA_CHANGED,CHANGED_INFRA_SERVICES,DOCKER_COMPOSE_CHANGED,VAULT_ADDR,INFRA_MANAGER_TOKEN,SERVICE_A_MANAGER_TOKEN,SERVICE_B_MANAGER_TOKEN,SERVICE_A_ROLE_ID,SERVICE_B_ROLE_ID
           script: |
             set -e  # Exit on any error
 
@@ -396,15 +338,13 @@ jobs:
             echo "Current directory: $(pwd)"
 
             # Fix permissions for deploy-bot
-            # 현재 디렉토리와 모든 하위 파일의 소유자를 deploy-bot으로 강제 설정
             sudo chown -R deploy-bot:developers /opt/exit8/self-managed-infrastructure
-            # 실행 유저가 git 명령을 수행할 수 있도록 safe.directory 설정
             git config --global --add safe.directory /opt/exit8/self-managed-infrastructure
 
             # ===================================
-            # Update Vault Credentials in .env
+            # Generate SECRET_IDs on Server (via Vault CLI)
             # ===================================
-            echo "Updating Vault credentials in .env..."
+            export VAULT_ADDR="${VAULT_ADDR}"
 
             # Backup .env if it exists
             if [ -f ".env" ]; then
@@ -412,20 +352,24 @@ jobs:
               echo "✓ .env backed up"
             fi
 
-            # Update SERVICE_A credentials if changed
+            # Service A: Generate new SECRET_ID if changed
             if [ "$SERVICE_A_BACKEND" == "true" ]; then
-              echo "Updating Service A Vault credentials..."
+              echo "Generating new SECRET_ID for service-a-backend..."
+              export VAULT_TOKEN="${SERVICE_A_MANAGER_TOKEN}"
+              SERVICE_A_SECRET_ID=$(vault write -field=secret_id -f auth/approle/role/service-a-backend/secret-id)
               sed -i "s|SERVICE_A_ROLE_ID=.*|SERVICE_A_ROLE_ID=${SERVICE_A_ROLE_ID}|" .env
               sed -i "s|SERVICE_A_SECRET_ID=.*|SERVICE_A_SECRET_ID=${SERVICE_A_SECRET_ID}|" .env
-              echo "✓ Service A credentials updated (valid for 30 days)"
+              echo "✓ Service A SECRET_ID generated and .env updated (valid for 30 days)"
             fi
 
-            # Update SERVICE_B credentials if changed
+            # Service B: Generate new SECRET_ID if changed
             if [ "$SERVICE_B_BACKEND" == "true" ]; then
-              echo "Updating Service B Vault credentials..."
+              echo "Generating new SECRET_ID for service-b-backend..."
+              export VAULT_TOKEN="${SERVICE_B_MANAGER_TOKEN}"
+              SERVICE_B_SECRET_ID=$(vault write -field=secret_id -f auth/approle/role/service-b-backend/secret-id)
               sed -i "s|SERVICE_B_ROLE_ID=.*|SERVICE_B_ROLE_ID=${SERVICE_B_ROLE_ID}|" .env
               sed -i "s|SERVICE_B_SECRET_ID=.*|SERVICE_B_SECRET_ID=${SERVICE_B_SECRET_ID}|" .env
-              echo "✓ Service B credentials updated (valid for 30 days)"
+              echo "✓ Service B SECRET_ID generated and .env updated (valid for 30 days)"
             fi
 
             # ===================================
@@ -433,7 +377,6 @@ jobs:
             # ===================================
             echo "Fetching infrastructure secrets from Vault..."
             export INFRA_MANAGER_TOKEN="${INFRA_MANAGER_TOKEN}"
-            export VAULT_ADDR="${VAULT_ADDR}"
 
             # Run init-infra-secrets.sh
             if [ -f "init-infra-secrets.sh" ]; then
