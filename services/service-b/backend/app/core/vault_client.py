@@ -1,5 +1,5 @@
-# HashiCorp Vault 클라이언트 (Service B - FastAPI)
-# 보안팀이 구성한 실제 Vault 구조에 맞춤
+
+
 
 import os
 import hvac
@@ -14,8 +14,9 @@ class VaultClient:
         # Vault 서버 주소
         self.vault_url = os.getenv("VAULT_URI", "http://vault:8200")
         
-        # Vault 인증 토큰 (Service B 전용)
-        self.vault_token = os.getenv("VAULT_TOKEN", "")
+        # app
+        self.role_id = os.getenv("VAULT_ROLE_ID")
+        self.secret_id = os.getenv("VAULT_SECRET_ID")
         
         # Vault 클라이언트 초기화
         self.client: Optional[hvac.Client] = None
@@ -28,10 +29,12 @@ class VaultClient:
                 logger.warning("VAULT_TOKEN not set - Vault integration disabled")
                 return
             
-            self.client = hvac.Client(
-                url=self.vault_url,
-                token=self.vault_token
+            self.client = hvac.Client(url=self.vault_url)
+            auth_response = self.client.auth.approle.login(
+            role_id=self.role_id,
+            secret_id=self.secret_id,
             )
+            self.client.token = auth_response["auth"]["client_token"]
             
             # 연결 테스트
             if self.client.is_authenticated():
