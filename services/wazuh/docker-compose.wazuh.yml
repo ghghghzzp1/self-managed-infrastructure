@@ -1,91 +1,95 @@
-# Wazuh Stack - Separate compose file due to complexity
-# Run with: docker-compose -f docker-compose.wazuh.yml up -d
-
 version: '3.8'
 
 services:
-  wazuh-indexer:
+  # 1. 인증서 자동 생성기 (실행 안되던 원인)
+  generate-indexer-certs:
+    image: wazuh/wazuh-certs-generator:4.7.2
+    hostname: wazuh-certs-generator
+    volumes:
+      - ./wazuh-certificates:/wazuh-certificates
+      - ./wazuh-config.yml:/wazuh-config.yml
+    command: >
+      bash -c "
+        if [ ! -f /wazuh-certificates/root-ca.pem ]; then
+          apk add --no-cache openssl
+          mkdir -p /wazuh-certificates/
+          # 인증서 생성 (Self-signed)
+          openssl genrsa -out /wazuh-certificates/root-ca.key 2048
+          openssl req -x509 -new -nodes -key /wazuh-certificates/root-ca.key -sha256 -days 1024 -out /wazuh-certificates/root-ca.pem -subj '/C=US/L=California/O=Wazuh/CN=root-ca'
+          openssl genrsa -out /wazuh-certificates/admin-key.pem 2048
+          openssl req -new -key /wazuh-certificates/admin-key.pem -out /wazuh-certificates/admin.csr -subj '/C=US/L=California/O=Wazuh/CN=admin'
+          openssl x509 -req -in /wazuh-certificates/admin.csr -CA /wazuh-certificates/root-ca.pem -CAkey /wazuh-certificates/root-ca.key -CAcreateserial -out /wazuh-certificates/admin.pem -days 365 -sha256
+          openssl genrsa -out /wazuh-certificates/wazuh-indexer-key.pem 2048
+          openssl req -new -key /wazuh-certificates/wazuh-indexer-key.pem -out /wazuh-certificates/wazuh-indexer.csr -subj '/C=US/L=California/O=Wazuh/CN=wazuh-indexer'
+          openssl x509 -req -in /wazuh-certificates/wazuh-indexer.csr -CA /wazuh-certificates/root-ca.pem -CAkey /wazuh-certificates/root-ca.key -CAcreateserial -out /wazuh-certificates/wazuh-indexer.pem -days 365 -sha256
+          openssl genrsa -out /wazuh-certificates/wazuh-manager-key.pem 2048
+          openssl req -new -key /wazuh-certificates/wazuh-manager-key.pem -out /wazuh-certificates/wazuh-manager.csr -subj '/C=US/L=California/O=Wazuh/CN=wazuh-manager'
+          openssl x509 -req -in /wazuh-certificates/wazuh-manager.csr -CA /wazuh-certificates/root-ca.pem -CAkey /wazuh-certificates/root-ca.key -CAcreateserial -out /wazuh-certificates/wazuh-manager.pem -days 365 -sha256
+          openssl genrsa -out /wazuh-certificates/wazuh-dashboard-key.pem 2048
+          openssl req -new -key /wazuh-certificates/wazuh-dashboard-key.pem -out /wazuh-certificates/wazuh-dashboard.csr -subj '/C=US/L=California/O=Wazuh/CN=wazuh-dashboard'
+          openssl x509 -req -in /wazuh-certificates/wazuh-dashboard.csr -CA /wazuh-certificates/root-ca.pem -CAkey /wazuh-certificates/root-ca.key -CAcreateserial -out /wazuh-certificates/wazuh-dashboard.pem -days 365 -sha256
+          chmod -R 777 /wazuh-certificates
+        fi
+      "
+
+  wazuh.indexer:
     image: wazuh/wazuh-indexer:4.7.2
-    container_name: wazuh-indexer
-    restart: unless-stopped
+    hostname: wazuh-indexer
+    restart: always
+    ports:
+      - "9200:9200"
     environment:
       - "OPENSEARCH_JAVA_OPTS=-Xms512m -Xmx512m"
-      - "bootstrap.memory_lock=true"
       - "discovery.type=single-node"
-      - "plugins.security.ssl.http.enabled=false"
-    ulimits:
-      memlock:
-        soft: -1
-        hard: -1
-      nofile:
-        soft: 65536
-        hard: 65536
+      - "DISABLE_INSTALL_DEMO_CONFIG=true"
     volumes:
-      - wazuh_indexer_data:/var/lib/wazuh-indexer
-    networks:
-      - wazuh
+      - wazuh-indexer-data:/var/lib/wazuh-indexer
+      - ./wazuh-certificates/root-ca.pem:/usr/share/wazuh-indexer/config/certs/root-ca.pem
+      - ./wazuh-certificates/wazuh-indexer.pem:/usr/share/wazuh-indexer/config/certs/indexer.pem
+      - ./wazuh-certificates/wazuh-indexer-key.pem:/usr/share/wazuh-indexer/config/certs/indexer-key.pem
+      - ./wazuh-certificates/admin.pem:/usr/share/wazuh-indexer/config/certs/admin.pem
+      - ./wazuh-certificates/admin-key.pem:/usr/share/wazuh-indexer/config/certs/admin-key.pem
+    depends_on:
+      - generate-indexer-certs
 
-  wazuh-manager:
+  wazuh.manager:
     image: wazuh/wazuh-manager:4.7.2
-    container_name: wazuh-manager
-    restart: unless-stopped
+    hostname: wazuh-manager
+    restart: always
     ports:
-      - "1514:1514"     # Agent connection
-      - "1515:1515"     # Agent enrollment
-      - "514:514/udp"   # Syslog
-      - "55000:55000"   # Wazuh API
+      - "1514:1514"
+      - "1515:1515"
+      - "55000:55000"
     environment:
       - INDEXER_URL=https://wazuh-indexer:9200
       - INDEXER_USERNAME=admin
-      - INDEXER_PASSWORD=SecretPassword
-      - FILEBEAT_SSL_VERIFICATION_MODE=none
+      - INDEXER_PASSWORD=admin
     volumes:
-      - wazuh_api_config:/var/ossec/api/configuration
-      - wazuh_etc:/var/ossec/etc
-      - wazuh_logs:/var/ossec/logs
-      - wazuh_queue:/var/ossec/queue
-      - wazuh_var_multigroups:/var/ossec/var/multigroups
-      - wazuh_integrations:/var/ossec/integrations
-      - wazuh_active_response:/var/ossec/active-response/bin
-      - wazuh_agentless:/var/ossec/agentless
-      - wazuh_wodles:/var/ossec/wodles
-      - filebeat_etc:/etc/filebeat
-      - filebeat_var:/var/lib/filebeat
-    networks:
-      - wazuh
+      - wazuh-manager-data:/var/ossec/data
+      - ./wazuh-certificates/root-ca.pem:/var/ossec/etc/root-ca.pem
+      - ./wazuh-certificates/wazuh-manager.pem:/var/ossec/etc/sslmanager.cert
+      - ./wazuh-certificates/wazuh-manager-key.pem:/var/ossec/etc/sslmanager.key
+    depends_on:
+      - wazuh.indexer
 
-  wazuh-dashboard:
+  wazuh.dashboard:
     image: wazuh/wazuh-dashboard:4.7.2
-    container_name: wazuh-dashboard
-    restart: unless-stopped
+    hostname: wazuh-dashboard
+    restart: always
     ports:
-      - "5601:5601"
+      - "443:5601"   # SSH 터널링(-L 18443:127.0.0.1:443)과 맞추기 위해 443으로 변경
     environment:
       - INDEXER_USERNAME=admin
-      - INDEXER_PASSWORD=SecretPassword
-      - WAZUH_API_URL=https://wazuh-manager
-      - API_USERNAME=wazuh-wui
-      - API_PASSWORD=MyS3cr37P450r.*-
+      - INDEXER_PASSWORD=admin
+      - OPENSEARCH_HOSTS=https://wazuh-indexer:9200
+      - WAZUH_MANAGER=wazuh-manager
+    volumes:
+      - ./wazuh-certificates/root-ca.pem:/usr/share/wazuh-dashboard/certs/root-ca.pem
+      - ./wazuh-certificates/wazuh-dashboard.pem:/usr/share/wazuh-dashboard/certs/dashboard.pem
+      - ./wazuh-certificates/wazuh-dashboard-key.pem:/usr/share/wazuh-dashboard/certs/dashboard-key.pem
     depends_on:
-      - wazuh-indexer
-      - wazuh-manager
-    networks:
-      - wazuh
-
-networks:
-  wazuh:
-    driver: bridge
+      - wazuh.indexer
 
 volumes:
-  wazuh_indexer_data:
-  wazuh_api_config:
-  wazuh_etc:
-  wazuh_logs:
-  wazuh_queue:
-  wazuh_var_multigroups:
-  wazuh_integrations:
-  wazuh_active_response:
-  wazuh_agentless:
-  wazuh_wodles:
-  filebeat_etc:
-  filebeat_var:
+  wazuh-indexer-data:
+  wazuh-manager-data:
