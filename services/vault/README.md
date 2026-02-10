@@ -93,8 +93,7 @@ vault secrets enable -version=2 -path=secret kv
 
 ```bash
 cd services/vault
-
-docker exec -i vault sh -c "VAULT_ADDR=http://127.0.0.1:8200 VAULT_TOKEN=$VAULT_TOKEN sh" < ./init-approle.sh
+./init-approle.sh
 ```
 
 다음과 같은 인증 정보가 출력됩니다:
