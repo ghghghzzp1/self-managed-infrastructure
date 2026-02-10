@@ -146,7 +146,95 @@ main() {
     echo -e "${YELLOW}│  - Manual restart OK within 30 days                     │${NC}"
     echo -e "${YELLOW}└─────────────────────────────────────────────────────────┘${NC}"
     echo ""
-    echo -e "${GREEN}✓ AppRole setup complete!${NC}"
+
+    # ===================================
+    # Create Manager Policies and Tokens
+    # ===================================
+    echo -e "${GREEN}=== Creating CI/CD Manager Tokens (Isolated) ===${NC}"
+    echo ""
+
+    # Service A Manager Policy
+    echo -e "${YELLOW}Creating manager policy for service-a...${NC}"
+    vault policy write "service-a-manager-policy" "${POLICY_DIR}/service-a-manager-policy.hcl"
+    echo -e "${GREEN}✓ service-a-manager-policy created${NC}"
+
+    # Service B Manager Policy
+    echo -e "${YELLOW}Creating manager policy for service-b...${NC}"
+    vault policy write "service-b-manager-policy" "${POLICY_DIR}/service-b-manager-policy.hcl"
+    echo -e "${GREEN}✓ service-b-manager-policy created${NC}"
+
+    # Infra Manager Policy
+    echo -e "${YELLOW}Creating manager policy for infra...${NC}"
+    vault policy write "infra-manager-policy" "${POLICY_DIR}/infra-manager-policy.hcl"
+    echo -e "${GREEN}✓ infra-manager-policy created${NC}"
+
+    echo ""
+    echo -e "${YELLOW}Generating manager tokens...${NC}"
+
+    # Service A Manager Token
+    SERVICE_A_MANAGER_TOKEN=$(vault token create \
+        -policy="service-a-manager-policy" \
+        -ttl=8760h \
+        -period=8760h \
+        -display-name="service-a-ci-cd-manager" \
+        -field=token)
+
+    # Service B Manager Token
+    SERVICE_B_MANAGER_TOKEN=$(vault token create \
+        -policy="service-b-manager-policy" \
+        -ttl=8760h \
+        -period=8760h \
+        -display-name="service-b-ci-cd-manager" \
+        -field=token)
+
+    # Infra Manager Token
+    INFRA_MANAGER_TOKEN=$(vault token create \
+        -policy="infra-manager-policy" \
+        -ttl=8760h \
+        -period=8760h \
+        -display-name="infra-ci-cd-manager" \
+        -field=token)
+
+    echo ""
+    echo -e "${GREEN}✓ Manager tokens created (Service A, Service B, Infra)${NC}"
+    echo ""
+
+    # ===================================
+    # Output Manager Tokens for GitHub
+    # ===================================
+    echo -e "${YELLOW}┌─────────────────────────────────────────────────────────┐${NC}"
+    echo -e "${YELLOW}│  GitHub Secrets (CI/CD Manager Tokens)                  │${NC}"
+    echo -e "${YELLOW}└─────────────────────────────────────────────────────────┘${NC}"
+    echo ""
+    echo "# Vault Address"
+    echo "VAULT_ADDR=http://vault:8200"
+    echo ""
+    echo "# Service A Manager Token (SECRET_ID 발급 전용)"
+    echo "SERVICE_A_MANAGER_TOKEN=${SERVICE_A_MANAGER_TOKEN}"
+    echo ""
+    echo "# Service B Manager Token (SECRET_ID 발급 전용)"
+    echo "SERVICE_B_MANAGER_TOKEN=${SERVICE_B_MANAGER_TOKEN}"
+    echo ""
+    echo "# Infra Manager Token (인프라 secrets 읽기 전용)"
+    echo "INFRA_MANAGER_TOKEN=${INFRA_MANAGER_TOKEN}"
+    echo ""
+    echo "# Service A Role ID"
+    echo "SERVICE_A_ROLE_ID=${SERVICE_A_ROLE_ID}"
+    echo ""
+    echo "# Service B Role ID"
+    echo "SERVICE_B_ROLE_ID=${SERVICE_B_ROLE_ID}"
+    echo ""
+    echo -e "${YELLOW}┌─────────────────────────────────────────────────────────┐${NC}"
+    echo -e "${YELLOW}│  SECURITY BENEFITS                                      │${NC}"
+    echo -e "${YELLOW}│  ✓ No ROOT_TOKEN in GitHub Secrets                      │${NC}"
+    echo -e "${YELLOW}│  ✓ Service-A ⚡ Service-B ⚡ Infra 완전 격리            │${NC}"
+    echo -e "${YELLOW}│  ✓ Service tokens: SECRET_ID 발급만 가능                │${NC}"
+    echo -e "${YELLOW}│  ✓ Infra token: 인프라 secrets 읽기만 가능              │${NC}"
+    echo -e "${YELLOW}│  ✓ Docker-compose credentials Vault 중앙 관리           │${NC}"
+    echo -e "${YELLOW}│  ✓ 1 year TTL with auto-renewal                         │${NC}"
+    echo -e "${YELLOW}└─────────────────────────────────────────────────────────┘${NC}"
+    echo ""
+    echo -e "${GREEN}✓ AppRole setup complete with isolated manager tokens!${NC}"
 }
 
 main

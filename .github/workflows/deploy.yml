@@ -314,31 +314,34 @@ jobs:
           sudo mv vault /usr/local/bin/
           vault version
 
-      - name: Generate new SECRET_IDs
+      - name: Generate new SECRET_IDs (Isolated)
         id: generate-secrets
         env:
           VAULT_ADDR: ${{ secrets.VAULT_ADDR }}
-          VAULT_TOKEN: ${{ secrets.VAULT_TOKEN }}
         run: |
-          # Service A SECRET_ID 발급
+          # Service A SECRET_ID 발급 (서비스 A 전용 토큰 사용)
           if [ "${{ needs.detect-changes.outputs.service-a-backend }}" == "true" ]; then
             echo "Generating new SECRET_ID for service-a-backend..."
+            export VAULT_TOKEN="${{ secrets.SERVICE_A_MANAGER_TOKEN }}"
             SERVICE_A_SECRET=$(vault write -field=secret_id -f auth/approle/role/service-a-backend/secret-id)
             echo "::add-mask::$SERVICE_A_SECRET"
             echo "service_a_secret_id=$SERVICE_A_SECRET" >> $GITHUB_OUTPUT
             echo "✓ Service A SECRET_ID generated (valid for 30 days)"
+            echo "✓ Used isolated SERVICE_A_MANAGER_TOKEN"
           else
             echo "service_a_secret_id=${{ secrets.SERVICE_A_SECRET_ID }}" >> $GITHUB_OUTPUT
             echo "⊘ Service A not changed, using existing SECRET_ID"
           fi
 
-          # Service B SECRET_ID 발급
+          # Service B SECRET_ID 발급 (서비스 B 전용 토큰 사용)
           if [ "${{ needs.detect-changes.outputs.service-b-backend }}" == "true" ]; then
             echo "Generating new SECRET_ID for service-b-backend..."
+            export VAULT_TOKEN="${{ secrets.SERVICE_B_MANAGER_TOKEN }}"
             SERVICE_B_SECRET=$(vault write -field=secret_id -f auth/approle/role/service-b-backend/secret-id)
             echo "::add-mask::$SERVICE_B_SECRET"
             echo "service_b_secret_id=$SERVICE_B_SECRET" >> $GITHUB_OUTPUT
             echo "✓ Service B SECRET_ID generated (valid for 30 days)"
+            echo "✓ Used isolated SERVICE_B_MANAGER_TOKEN"
           else
             echo "service_b_secret_id=${{ secrets.SERVICE_B_SECRET_ID }}" >> $GITHUB_OUTPUT
             echo "⊘ Service B not changed, using existing SECRET_ID"
@@ -374,6 +377,8 @@ jobs:
           INFRA_CHANGED: ${{ needs.detect-changes.outputs.infra }}
           CHANGED_INFRA_SERVICES: ${{ needs.detect-changes.outputs.changed-infra-services }}
           DOCKER_COMPOSE_CHANGED: ${{ needs.detect-changes.outputs.docker-compose-changed }}
+          VAULT_ADDR: ${{ secrets.VAULT_ADDR }}
+          INFRA_MANAGER_TOKEN: ${{ secrets.INFRA_MANAGER_TOKEN }}
           SERVICE_A_ROLE_ID: ${{ secrets.SERVICE_A_ROLE_ID }}
           SERVICE_A_SECRET_ID: ${{ needs.rotate-vault-credentials.outputs.service_a_secret_id }}
           SERVICE_B_ROLE_ID: ${{ secrets.SERVICE_B_ROLE_ID }}
@@ -382,7 +387,7 @@ jobs:
           host: ${{ secrets.SERVER_HOST }}
           username: ${{ secrets.SERVER_USER }}
           key: ${{ secrets.SERVER_SSH_KEY }}
-          envs: SERVICE_A_BACKEND,SERVICE_A_FRONTEND,SERVICE_B_BACKEND,SERVICE_B_FRONTEND,INFRA_CHANGED,CHANGED_INFRA_SERVICES,DOCKER_COMPOSE_CHANGED,SERVICE_A_ROLE_ID,SERVICE_A_SECRET_ID,SERVICE_B_ROLE_ID,SERVICE_B_SECRET_ID
+          envs: SERVICE_A_BACKEND,SERVICE_A_FRONTEND,SERVICE_B_BACKEND,SERVICE_B_FRONTEND,INFRA_CHANGED,CHANGED_INFRA_SERVICES,DOCKER_COMPOSE_CHANGED,VAULT_ADDR,INFRA_MANAGER_TOKEN,SERVICE_A_ROLE_ID,SERVICE_A_SECRET_ID,SERVICE_B_ROLE_ID,SERVICE_B_SECRET_ID
           script: |
             set -e  # Exit on any error
 
@@ -421,6 +426,22 @@ jobs:
               sed -i "s|SERVICE_B_ROLE_ID=.*|SERVICE_B_ROLE_ID=${SERVICE_B_ROLE_ID}|" .env
               sed -i "s|SERVICE_B_SECRET_ID=.*|SERVICE_B_SECRET_ID=${SERVICE_B_SECRET_ID}|" .env
               echo "✓ Service B credentials updated (valid for 30 days)"
+            fi
+
+            # ===================================
+            # Update Infrastructure Secrets
+            # ===================================
+            echo "Fetching infrastructure secrets from Vault..."
+            export INFRA_MANAGER_TOKEN="${INFRA_MANAGER_TOKEN}"
+            export VAULT_ADDR="${VAULT_ADDR}"
+
+            # Run init-infra-secrets.sh
+            if [ -f "init-infra-secrets.sh" ]; then
+              chmod +x init-infra-secrets.sh
+              ./init-infra-secrets.sh
+              echo "✓ Infrastructure secrets updated from Vault"
+            else
+              echo "⚠ Warning: init-infra-secrets.sh not found, skipping infra secrets update"
             fi
 
             # Verify docker-compose.yml exists

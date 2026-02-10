@@ -15,18 +15,14 @@ spring:
 
   cloud:
     vault:
-<<<<<<< Updated upstream
       uri: ${VAULT_URI:http://vault:8200}
       token: ${VAULT_TOKEN}
-=======
-      uri: ${VAULT_URI:http://localhost:8200}
       authentication: APPROLE
       app-role:
         role-id: ${VAULT_ROLE_ID}
         secret-id: ${VAULT_SECRET_ID}
         role: service-a-backend
         app-role-path: approle
->>>>>>> Stashed changes
       kv:
         enabled: true
         backend: secret
