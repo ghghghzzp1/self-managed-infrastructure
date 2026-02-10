@@ -298,7 +298,6 @@ jobs:
     name: Deploy to Server
     runs-on: ubuntu-latest
     needs: [detect-changes, build-service-a-backend, build-service-a-frontend, build-service-b-backend, build-service-b-frontend]
-    # always() 필수: skipped된 job도 통과시키기 위함
     if: |
       always() &&
       !cancelled() &&
@@ -320,11 +319,17 @@ jobs:
           INFRA_CHANGED: ${{ needs.detect-changes.outputs.infra }}
           CHANGED_INFRA_SERVICES: ${{ needs.detect-changes.outputs.changed-infra-services }}
           DOCKER_COMPOSE_CHANGED: ${{ needs.detect-changes.outputs.docker-compose-changed }}
+          VAULT_ADDR: ${{ secrets.VAULT_ADDR }}
+          INFRA_MANAGER_TOKEN: ${{ secrets.INFRA_MANAGER_TOKEN }}
+          SERVICE_A_MANAGER_TOKEN: ${{ secrets.SERVICE_A_MANAGER_TOKEN }}
+          SERVICE_B_MANAGER_TOKEN: ${{ secrets.SERVICE_B_MANAGER_TOKEN }}
+          SERVICE_A_ROLE_ID: ${{ secrets.SERVICE_A_ROLE_ID }}
+          SERVICE_B_ROLE_ID: ${{ secrets.SERVICE_B_ROLE_ID }}
         with:
           host: ${{ secrets.SERVER_HOST }}
           username: ${{ secrets.SERVER_USER }}
           key: ${{ secrets.SERVER_SSH_KEY }}
-          envs: SERVICE_A_BACKEND,SERVICE_A_FRONTEND,SERVICE_B_BACKEND,SERVICE_B_FRONTEND,INFRA_CHANGED,CHANGED_INFRA_SERVICES,DOCKER_COMPOSE_CHANGED
+          envs: SERVICE_A_BACKEND,SERVICE_A_FRONTEND,SERVICE_B_BACKEND,SERVICE_B_FRONTEND,INFRA_CHANGED,CHANGED_INFRA_SERVICES,DOCKER_COMPOSE_CHANGED,VAULT_ADDR,INFRA_MANAGER_TOKEN,SERVICE_A_MANAGER_TOKEN,SERVICE_B_MANAGER_TOKEN,SERVICE_A_ROLE_ID,SERVICE_B_ROLE_ID
           script: |
             set -e  # Exit on any error
 
@@ -333,10 +338,54 @@ jobs:
             echo "Current directory: $(pwd)"
 
             # Fix permissions for deploy-bot
-            # 현재 디렉토리와 모든 하위 파일의 소유자를 deploy-bot으로 강제 설정
             sudo chown -R deploy-bot:developers /opt/exit8/self-managed-infrastructure
-            # 실행 유저가 git 명령을 수행할 수 있도록 safe.directory 설정
             git config --global --add safe.directory /opt/exit8/self-managed-infrastructure
+
+            # ===================================
+            # Generate SECRET_IDs on Server (via Vault CLI)
+            # ===================================
+            export VAULT_ADDR="${VAULT_ADDR}"
+
+            # Backup .env if it exists
+            if [ -f ".env" ]; then
+              cp .env .env.backup.$(date +%Y%m%d_%H%M%S)
+              echo "✓ .env backed up"
+            fi
+
+            # Service A: Generate new SECRET_ID if changed
+            if [ "$SERVICE_A_BACKEND" == "true" ]; then
+              echo "Generating new SECRET_ID for service-a-backend..."
+              export VAULT_TOKEN="${SERVICE_A_MANAGER_TOKEN}"
+              SERVICE_A_SECRET_ID=$(vault write -field=secret_id -f auth/approle/role/service-a-backend/secret-id)
+              sed -i "s|SERVICE_A_ROLE_ID=.*|SERVICE_A_ROLE_ID=${SERVICE_A_ROLE_ID}|" .env
+              sed -i "s|SERVICE_A_SECRET_ID=.*|SERVICE_A_SECRET_ID=${SERVICE_A_SECRET_ID}|" .env
+              echo "✓ Service A SECRET_ID generated and .env updated (valid for 30 days)"
+            fi
+
+            # Service B: Generate new SECRET_ID if changed
+            if [ "$SERVICE_B_BACKEND" == "true" ]; then
+              echo "Generating new SECRET_ID for service-b-backend..."
+              export VAULT_TOKEN="${SERVICE_B_MANAGER_TOKEN}"
+              SERVICE_B_SECRET_ID=$(vault write -field=secret_id -f auth/approle/role/service-b-backend/secret-id)
+              sed -i "s|SERVICE_B_ROLE_ID=.*|SERVICE_B_ROLE_ID=${SERVICE_B_ROLE_ID}|" .env
+              sed -i "s|SERVICE_B_SECRET_ID=.*|SERVICE_B_SECRET_ID=${SERVICE_B_SECRET_ID}|" .env
+              echo "✓ Service B SECRET_ID generated and .env updated (valid for 30 days)"
+            fi
+
+            # ===================================
+            # Update Infrastructure Secrets
+            # ===================================
+            echo "Fetching infrastructure secrets from Vault..."
+            export INFRA_MANAGER_TOKEN="${INFRA_MANAGER_TOKEN}"
+
+            # Run init-infra-secrets.sh
+            if [ -f "init-infra-secrets.sh" ]; then
+              chmod +x init-infra-secrets.sh
+              ./init-infra-secrets.sh
+              echo "✓ Infrastructure secrets updated from Vault"
+            else
+              echo "⚠ Warning: init-infra-secrets.sh not found, skipping infra secrets update"
+            fi
 
             # Verify docker-compose.yml exists
             if [ ! -f "docker-compose.yml" ]; then

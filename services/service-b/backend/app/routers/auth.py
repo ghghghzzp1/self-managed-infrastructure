@@ -112,7 +112,8 @@ async def register(reg_data: RegisterRequest, db: AsyncSession = Depends(get_db)
         await db.commit()
         await db.refresh(new_user)
 
-        logger.info("USER_REGISTER", extra={"username": new_user.username, "name": new_user.name})
+        # 👇 [수정됨] "name" -> "full_name"으로 변경 (500 에러 해결!)
+        logger.info("USER_REGISTER", extra={"username": new_user.username, "full_name": new_user.name})
         return create_response(201, data={"username": new_user.username, "message": "User created"})
 
     except Exception as e:

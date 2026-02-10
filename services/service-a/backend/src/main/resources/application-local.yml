@@ -4,7 +4,7 @@ spring:
       on-profile: local
 
   datasource:
-    url: jdbc:postgresql://localhost:5432/appdb
+    url: jdbc:postgresql://localhost:5432/${db.name}
     username: ${db.username}
     password: ${db.password}
 
