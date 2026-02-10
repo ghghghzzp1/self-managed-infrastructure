@@ -133,14 +133,18 @@ vault kv put secret/infra/grafana \
   admin_user="admin" \
   admin_password="secure-grafana-password"
 
-# Service A 시크릿
-vault kv put secret/service-a-backend/config \
-  db.password="secure-password" \
+# Service A 시크릿 (DB 접속 정보 포함)
+vault kv put secret/service-a-backend \
+  db.user="service_a_user" \
+  db.password="service-a-password" \
+  db.name="service_a_db" \
   api.key="service-a-api-key"
 
-# Service B 시크릿
-vault kv put secret/service-b-backend/config \
-  db.password="secure-password" \
+# Service B 시크릿 (DB 접속 정보 포함)
+vault kv put secret/service-b-backend \
+  db.user="service_b_user" \
+  db.password="service-b-password" \
+  db.name="service_b_db" \
   api.key="service-b-api-key"
 ```
 
@@ -156,7 +160,23 @@ export VAULT_ADDR=http://localhost:8200
 
 이 스크립트는 Vault에서 인프라 credentials를 가져와 `.env` 파일을 자동 생성/업데이트합니다.
 
-### 8. 애플리케이션 시작
+### 8. 서비스별 DB 초기화 (최초 1회)
+
+```bash
+export VAULT_ADDR=http://localhost:8200
+export VAULT_TOKEN=<your-root-token>
+
+./init-db.sh
+```
+
+이 스크립트는 Vault에서 서비스별 DB 접속 정보를 가져와 PostgreSQL에 유저/데이터베이스를 생성합니다:
+
+- `secret/service-a-backend` → `db.user`, `db.password`, `db.name` → PostgreSQL 유저/DB 생성
+- `secret/service-b-backend` → `db.user`, `db.password`, `db.name` → PostgreSQL 유저/DB 생성
+
+**참고:** PostgreSQL 볼륨이 유지되는 한 최초 1회만 실행하면 됩니다. 비밀번호 변경 시 다시 실행하면 업데이트됩니다.
+
+### 9. 애플리케이션 시작
 
 ```bash
 docker-compose up -d
@@ -165,14 +185,22 @@ docker-compose up -d
 ## 📁 파일 구조
 
 ```
-services/vault/
-├── README.md                    # 이 파일
-├── config/
-│   └── vault.hcl               # Vault 서버 설정
-├── policies/
-│   ├── service-a-policy.hcl    # Service A 접근 정책
-│   └── service-b-policy.hcl    # Service B 접근 정책
-└── init-approle.sh             # AppRole 초기화 스크립트
+project-root/
+├── init-infra-secrets.sh              # Vault → .env (인프라 credentials)
+├── init-db.sh                         # Vault → PostgreSQL 서비스별 유저/DB 생성
+├── docker-compose.yml                 # 컨테이너 설정 (.env에서 변수 로드)
+├── .env                               # 환경변수 (Git 제외, Vault에서 생성)
+└── services/vault/
+    ├── README.md                      # 이 파일
+    ├── config/
+    │   └── vault.hcl                  # Vault 서버 설정
+    ├── policies/
+    │   ├── service-a-policy.hcl       # Service A 접근 정책
+    │   ├── service-b-policy.hcl       # Service B 접근 정책
+    │   ├── service-a-manager-policy.hcl  # CI/CD Manager 정책
+    │   ├── service-b-manager-policy.hcl  # CI/CD Manager 정책
+    │   └── infra-manager-policy.hcl      # 인프라 Manager 정책
+    └── init-approle.sh                # AppRole 초기화 스크립트
 ```
 
 ## 🔄 CI/CD 통합 (하이브리드 방식)
