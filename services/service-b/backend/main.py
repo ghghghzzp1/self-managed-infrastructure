@@ -1,57 +1,136 @@
 from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 from prometheus_fastapi_instrumentator import Instrumentator
-from sqlalchemy import select
 from app.core.config import settings
 from app.core.middleware import SecurityLoggingMiddleware
 from app.core.logger import logger
-from app.routers import auth
-from app.database.session import engine, AsyncSessionLocal
-from app.models import Base, User
+from app.core.vault_client import vault_client
+from app.database.session import engine
+from app.models import Base
 
-app = FastAPI(title=settings.PROJECT_NAME)
 
+# FastAPI 앱 생성
+app = FastAPI(
+    title=settings.PROJECT_NAME,
+    version="2.0.0",
+    description="Security Lab - Vault Integrated Backend (Service B)"
+)
+
+# CORS 설정
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+# 보안 로깅 미들웨어 추가
 app.add_middleware(SecurityLoggingMiddleware)
-Instrumentator().instrument(app).expose(app, endpoint="/actuator/prometheus")
 
-app.include_router(auth.router, prefix="/api/v1/auth", tags=["Authentication"])
+# Prometheus 메트릭 수집
+Instrumentator().instrument(app).expose(app)
 
-@app.get("/health")
-def health_check():
-    return {"status": "ok", "service": "service-b"}
 
-# 서버 시작 시 실행
 @app.on_event("startup")
 async def startup_event():
-    # 테이블 자동 생성
+    # 애플리케이션 시작 시 실행
+    
+    # 데이터베이스 테이블 생성
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
     
-    # 관리자 계정(Target) 자동 생성
-    async with AsyncSessionLocal() as db:
-        result = await db.execute(select(User).where(User.username == "admin"))
-        if not result.scalars().first():
-            new_admin = User(
-                username="admin", 
-                name="관리자",  # 필수 필드(name)
-                password="super_secret_password_123", 
-                email="admin@exit8.corp", 
-                is_admin=True
-            )
-            db.add(new_admin)
-            await db.commit()
-            logger.info("SERVER_STARTED", extra={"detail": "Admin user initialized"})
-        
-    logger.info("SERVER_STARTED", extra={"service": "service-b"})
+    logger.info("SERVER_STARTED", extra={
+        "project": settings.PROJECT_NAME,
+        "vault_enabled": settings.VAULT_ENABLED,
+        "vault_available": vault_client.is_available()
+    })
 
 
-@app.get("/health")
-def health():
+@app.on_event("shutdown")
+async def shutdown_event():
+    # 애플리케이션 종료 시 실행
+    logger.info("SERVER_SHUTDOWN")
+
+
+# ==================== 헬스체크 엔드포인트 ====================
+
+@app.get("/")
+async def root():
+    # 루트 경로
     return {
-        "status": "ok",
-        "service": "service-b-backend"
+        "service": settings.PROJECT_NAME,
+        "status": "running",
+        "vault_integrated": vault_client.is_available()
     }
 
 
-@app.get("/")
-def root():
-    return {"message": "Service B API", "version": "0.0.1"}
+@app.get("/health")
+async def health_check():
+    # 기본 헬스체크
+    return {"status": "healthy"}
+
+
+@app.get("/api/v1/health/vault")
+async def vault_health():
+    # Vault 연결 상태 확인
+    is_available = vault_client.is_available()
+    
+    return {
+        "vault_enabled": settings.VAULT_ENABLED,
+        "vault_available": is_available,
+        "vault_url": vault_client.vault_url,
+        "status": "connected" if is_available else "disconnected"
+    }
+
+
+@app.get("/api/v1/health/database")
+async def database_health():
+    # 데이터베이스 연결 상태 확인
+    from app.database.session import AsyncSessionLocal
+    from sqlalchemy import text
+    
+    try:
+        async with AsyncSessionLocal() as session:
+            result = await session.execute(text("SELECT 1"))
+            result.scalar()
+        
+        return {
+            "database": "connected",
+            "credentials_source": "vault" if vault_client.is_available() else "environment"
+        }
+    except Exception as e:
+        logger.error("DB_CONNECTION_FAILED", extra={"error": str(e)})
+        return {
+            "database": "disconnected",
+            "error": str(e)
+        }
+
+
+@app.get("/api/v1/info")
+async def system_info():
+    # 시스템 정보 (디버깅용)
+    return {
+        "project": settings.PROJECT_NAME,
+        "vault": {
+            "enabled": settings.VAULT_ENABLED,
+            "available": vault_client.is_available(),
+            "url": vault_client.vault_url
+        },
+        "database": {
+            "server": settings.POSTGRES_SERVER,
+            "database": settings.POSTGRES_DB,
+            "user": settings.POSTGRES_USER,
+            "password_set": bool(settings.POSTGRES_PASSWORD)
+        }
+    }
+
+
+if __name__ == "__main__":
+    import uvicorn
+    uvicorn.run(
+        "main:app",
+        host="0.0.0.0",
+        port=8000,
+        reload=True
+    )
