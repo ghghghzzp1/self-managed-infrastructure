@@ -37,9 +37,9 @@ class Settings(BaseSettings):
                 
                 if db_creds:
                     # 실제 Vault 키 이름 사용
-                    self.POSTGRES_USER = db_creds.get("db.user", "")
+                    self.POSTGRES_USER = db_creds.get("db.username", "")
                     self.POSTGRES_PASSWORD = db_creds.get("db.password", "")
-                    self.POSTGRES_DB = db_creds.get("db.name", "appdb")
+                    self.POSTGRES_DB = db_creds.get("db.name", "")
                     
                     # db.host는 Vault에 없으므로 환경변수에서 가져옴
                     self.POSTGRES_SERVER = os.getenv("POSTGRES_SERVER", "postgres")
