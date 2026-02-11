@@ -91,7 +91,9 @@ services/service-a/backend/
 │   │   └── GlobalExceptionHandler.java
 │   │
 │   ├── filter/            # HTTP 진입 trace_id 생성
-│   │   └── TraceIdFilter.java
+│   │   ├── TraceIdFilter.java          # 요청 식별
+│   │   ├── RateLimitFilter.java        # 차단 로직
+│   │   └── ClientIpResolver.java       # IP 해석 책임 분리
 │   │
 │   ├── logging/           # AOP 기반 관측 로깅
 │   │   ├── LogAspect.java                  # LOAD_START / END / FAIL 트리거
@@ -99,19 +101,15 @@ services/service-a/backend/
 │   │   ├── LogEvent.java                   # 이벤트 상수 (LOAD_START 등)
 │   │   └── TraceContext.java               # MDC 기반 trace_id 접근 전용
 │   │
-│   ├── observability/     # 메트릭/트레이싱 설정
-│   │   ├── metrics/
-│   │   │   └── MetricsConfig.java           # Micrometer 커스텀 설정
-│   │   └── tracing/
-│   │       └── TraceConstants.java          # trace_id 키 등 공통 상수
-│   │
 │   └── config/
-│       ├── datasource/
+│       ├── datasource/                     # DB 설정
 │       │   └── PostgresConfig.java
-│       ├── redis/
+│       ├── redis/                          # edis 설정
 │       │   └── RedisConfig.java
-│       └── observability/
-│           └── MetricsConfig.java
+│       ├── observability/                  # Metrics / tracing 설정
+│       │   └── MetricsConfig.java
+│       └── filter/                         # Filter 설정
+│           └── FilterOrderConfig.java      # 순서만 제어
 │
 └── src/main/resources/
     ├── application.yml
@@ -241,6 +239,11 @@ DOWN
 3. OPEN 전환
 4. Fallback 호출
 5. WARN 로그 + 503 응답
+
+- CircuitBreaker OPEN 시:
+    - HTTP 200 응답
+    - data: "서킷 브레이커 OPEN"
+    - 사용자에게 의도된 실패 경험 제공
 
 ---
 
@@ -379,6 +382,25 @@ DOWN
 
 <br>
 
+#### RateLimitFilter (앞단 차단 로그)
+
+- Rate Limit에 의해 차단된 요청은 Service / AOP 흐름에 진입하지 않는다.
+- 따라서 trace_id를 생성하지 않으며, 요청 단위 추적 대상에 포함하지 않는다.
+- Rate Limit 로그는 “처리되지 않은 요청의 통계적 관측” 목적의 인프라 로그로만 기록한다.
+- Rate Limit은 실험 단계별로 ON/OFF 한다
+- 초기 실험은 Rate Limit ❌ 상태에서 진행
+- 이후 동일 시나리오로 Rate Limit ✅ 비교
+
+```
+Request
+ → RateLimitFilter   ← 여기서 차단
+   → TraceIdFilter   (아직 안 탐)
+     → Controller
+       → Service
+```
+
+<br>
+
 ### trace_id 전파 검증 (요청 단위 추적 불변식 확인)
 
 - 로그 확인 (trace_id 기준으로 START/END 로그가 모두 존재해야 함)
@@ -475,6 +497,7 @@ curl -X POST "http://localhost:8080/api/load/cpu?durationMs=1000" -H "X-Trace-Id
 ### Docker Healthcheck & Spring Actuator 설계 원칙
 - docker-compose를 수정하지 않는 것을 전제로 Spring Actuator Health 동작 설계
 - docker-compose Healthcheck는 /actuator/health 기준으로 HTTP 응답 가능 여부(Liveness) 만 판단
+
 ```
 healthcheck:
   test: ["CMD", "wget", "-q", "--spider", "http://localhost:8080/actuator/health"]
@@ -494,6 +517,10 @@ management:
 - DB / Redis / CircuitBreaker 상태는 Health 판단에서 제외
 - 부하 테스트 중 의존성 장애가 발생해도 컨테이너 유지
 - restart loop 방지
+- application.yml에는 health 판단 로직을 두지 않음
+- health의 의미는 profile별로 완전히 다르게 정의됨
+- docker 환경에서는 관측 정보(state, details)를 노출하지 않음
+- liveness 판단과 observability를 명확히 분리하기 위함
 
 | 레이어             | Health 의미            |
 | --------------- | -------------------- |
@@ -615,7 +642,7 @@ secret/service-a-backend/docker
 
 ### Docker 실행 환경 검증
 - Vault 컨테이너와 동일 Docker 네트워크에서 실행 
-- `VAULT_URI`, `VAULT_TOKEN은` 환경 변수로만 주입
+- `VAULT_URI`, `VAULT_TOKEN`은 환경 변수로만 주입
 
 #### 로컬 검증 환경 
 - Docker 기반 Vault dev mode 사용 
