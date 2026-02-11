@@ -23,16 +23,16 @@ class VaultClient:
         self._initialize_client()
     
     def _initialize_client(self):
-        # Vault 클라이언트 초기화 및 연결 확인
+        # Vault 클라이언트 초기화 및 AppRole 인증
         try:
-            if not self.vault_token:
-                logger.warning("VAULT_TOKEN not set - Vault integration disabled")
+            if not self.role_id or not self.secret_id:
+                logger.warning("VAULT_ROLE_ID or VAULT_SECRET_ID not set - Vault integration disabled")
                 return
             
             self.client = hvac.Client(url=self.vault_url)
             auth_response = self.client.auth.approle.login(
-            role_id=self.role_id,
-            secret_id=self.secret_id,
+                role_id=self.role_id,
+                secret_id=self.secret_id,
             )
             self.client.token = auth_response["auth"]["client_token"]
             
