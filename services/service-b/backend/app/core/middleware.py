@@ -16,8 +16,8 @@ def get_client_ip(request: Request) -> str:
 
 class SecurityLoggingMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next):
-        # 요청마다 고유 trace_id 생성
-        trace_id = str(uuid.uuid4())
+        # X-Trace-Id 헤더 있으면 재사용, 없으면 새로 생성 (분산 추적 지원)
+        trace_id = request.headers.get("X-Trace-Id") or str(uuid.uuid4())
         client_ip = get_client_ip(request)
 
         # ContextVar에 저장 (비동기 환경에서 요청 간 유실 방지)
@@ -27,6 +27,9 @@ class SecurityLoggingMiddleware(BaseHTTPMiddleware):
         start_time = time.time()
         response = await call_next(request)
         process_time = time.time() - start_time
+
+        # 응답에도 X-Trace-Id 포함 (프론트에서 추적 가능)
+        response.headers["X-Trace-Id"] = trace_id
 
         log_data = {
             "method": request.method,

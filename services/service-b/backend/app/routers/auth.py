@@ -82,7 +82,7 @@ async def login(
             )
 
     except Exception as e:
-                logger.error("LOGIN_ERROR", extra={"error": str(e), "input_user": login_data.username[:50]})
+                logger.error("LOGIN_ERROR", extra={"stack_trace": str(e), "input_user": login_data.username[:50]})
                 return JSONResponse(status_code=500, content=create_response(500, error={"code": "SERVER_ERROR"}))
 
 # --- 2. 회원가입 (4가지 정보 입력: ID, Name, PW, Email) ---
@@ -118,7 +118,7 @@ async def register(reg_data: RegisterRequest, db: AsyncSession = Depends(get_db)
         return create_response(201, data={"username": new_user.username, "message": "User created"})
 
     except Exception as e:
-        logger.error("REGISTER_ERROR", extra={"error": str(e)})
+        logger.error("REGISTER_ERROR", extra={"stack_trace": str(e)})
         return JSONResponse(status_code=500, content={"message": "Register failed"})
 
 

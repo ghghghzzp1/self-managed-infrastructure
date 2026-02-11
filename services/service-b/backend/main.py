@@ -100,7 +100,7 @@ async def database_health():
             "credentials_source": "vault" if vault_client.is_available() else "environment"
         }
     except Exception as e:
-        logger.error("DB_CONNECTION_FAILED", extra={"error": str(e)})
+        logger.error("DB_CONNECTION_FAILED", extra={"stack_trace": str(e)})
         return {
             "database": "disconnected",
             "error": str(e)
