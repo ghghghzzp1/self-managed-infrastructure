@@ -1,14 +1,26 @@
 # ==========================================
-# Service A Frontend: Nginx
+# Service A Frontend: React + Vite → Nginx
 # ==========================================
 
+# ---------- build stage ----------
+FROM node:20-alpine AS build
+
+WORKDIR /app
+
+COPY package.json package-lock.json* ./
+RUN npm ci 2>/dev/null || npm install
+
+COPY . .
+RUN npm run build
+
+# ---------- runtime stage ----------
 FROM nginx:alpine
 
 RUN addgroup -g 1001 -S appgroup && \
     adduser -u 1001 -S appuser -G appgroup
 
 COPY nginx.conf /etc/nginx/nginx.conf
-COPY . /usr/share/nginx/html/
+COPY --from=build /app/dist /usr/share/nginx/html
 
 RUN chown -R appuser:appgroup /var/cache/nginx /var/log/nginx /usr/share/nginx/html && \
     touch /var/run/nginx.pid && chown appuser:appgroup /var/run/nginx.pid
