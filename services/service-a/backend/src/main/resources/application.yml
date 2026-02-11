@@ -17,7 +17,6 @@ spring:
   cloud:
     vault:
       uri: ${VAULT_URI:http://vault:8200}
-      token: ${VAULT_TOKEN}
       authentication: APPROLE
       app-role:
         role-id: ${VAULT_ROLE_ID}
