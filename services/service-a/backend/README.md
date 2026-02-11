@@ -599,6 +599,7 @@ docker rm -f service-a-backend
 # 2. 처음부터 db 네트워크로 실행
 docker run -d --name service-a-backend \
   --network db \
+  --env-file .env \
   -p 8080:8080 \
   -e SPRING_PROFILES_ACTIVE=docker \
   -e JAVA_OPTS="-Xms256m -Xmx512m" \
