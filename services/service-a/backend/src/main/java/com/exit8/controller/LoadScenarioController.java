@@ -19,13 +19,15 @@ public class LoadScenarioController {
     }
 
     @PostMapping("/db-read")
-    public DefaultResponse<Void> dbReadLoad(@RequestParam int repeatCount) {
+    public DefaultResponse<Void> dbReadLoad(
+            @RequestParam(name = "repeatCount", defaultValue = "1") int repeatCount) {
         loadScenarioService.simulateDbReadLoad(repeatCount);
         return DefaultResponse.success(200);
     }
 
     @PostMapping("/db-write")
-    public DefaultResponse<Void> dbWrite(@RequestParam int repeatCount) {
+    public DefaultResponse<Void> dbWrite(
+        @RequestParam(name = "repeatCount", defaultValue = "1") int repeatCount) {
         loadScenarioService.simulateDbWriteLoad(repeatCount);
         return DefaultResponse.success(200);
     }
