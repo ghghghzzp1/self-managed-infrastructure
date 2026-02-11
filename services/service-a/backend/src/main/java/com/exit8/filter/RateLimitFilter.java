@@ -116,7 +116,7 @@ public class RateLimitFilter extends OncePerRequestFilter {
                 Refill.intervally(20, Duration.ofSeconds(1)) // 초당 충전되는 토큰 수
         );
 
-        return Bucket4j.builder()
+        return Bucket.builder()
                 .addLimit(limit)
                 .build();
     }
