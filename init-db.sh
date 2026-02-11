@@ -75,7 +75,7 @@ create_service_db() {
 
     # Fetch credentials from Vault
     local db_user db_password db_name
-    db_user=$(get_secret "$vault_path" "db.user") || return 1
+    db_user=$(get_secret "$vault_path" "db.username") || return 1
     db_password=$(get_secret "$vault_path" "db.password") || return 1
     db_name=$(get_secret "$vault_path" "db.name") || return 1
 
