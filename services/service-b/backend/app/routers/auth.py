@@ -6,6 +6,7 @@ from sqlalchemy import text, select
 from app.database.session import get_db
 from app.core.logger import logger
 from app.models import User 
+from app.core.context import client_ip_var
 
 router = APIRouter()
 
@@ -47,7 +48,7 @@ async def login(
                 "input_user": login_data.username[:50],
                 "patterns": str(detected),
                 "type": "SQL_INJECTION_ATTEMPT",
-                "ip": request.client.host
+                "ip": client_ip_var.get()
             })
 
         # 2. 취약점: 입력값 검증 없이 쿼리 실행 (name 컬럼도 조회)
@@ -62,7 +63,7 @@ async def login(
         
         logger.info(log_event, extra={
             "input_user": login_data.username[:50],
-            "ip": request.client.host,
+            "ip": client_ip_var.get(),
             "success": login_success
         })
 

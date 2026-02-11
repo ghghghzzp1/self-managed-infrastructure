@@ -1,6 +1,3 @@
-
-
-
 import os
 import hvac
 from typing import Dict, Optional
@@ -25,8 +22,8 @@ class VaultClient:
     def _initialize_client(self):
         # Vault 클라이언트 초기화 및 연결 확인
         try:
-            if not self.vault_token:
-                logger.warning("VAULT_TOKEN not set - Vault integration disabled")
+            if not self.role_id or not self.secret_id:
+                logger.warning("VAULT_ROLE_ID or VAULT_SECRET_ID not set - Vault integration disabled")
                 return
             
             self.client = hvac.Client(url=self.vault_url)
