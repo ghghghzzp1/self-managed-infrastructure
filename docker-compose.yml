@@ -142,7 +142,8 @@ services:
       - frontend
       - backend
     depends_on:
-      - service-a-backend
+      service-a-backend:
+        condition: service_healthy
     healthcheck:
       test: ["CMD", "wget", "-q", "--spider", "http://localhost:80/health"]
       interval: 30s
@@ -199,7 +200,8 @@ services:
       - frontend
       - backend
     depends_on:
-      - service-b-backend
+      service-b-backend:
+        condition: service_healthy
     healthcheck:
       test: ["CMD", "wget", "-q", "--spider", "http://localhost:80/health"]
       interval: 30s
