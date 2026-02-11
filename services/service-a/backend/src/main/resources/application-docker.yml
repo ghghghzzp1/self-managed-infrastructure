@@ -21,7 +21,6 @@ management:
       enabled: false
     circuitbreakers:
       enabled: false   # docker healthcheck용 핵심
-
   endpoint:
     health:
       show-details: never
