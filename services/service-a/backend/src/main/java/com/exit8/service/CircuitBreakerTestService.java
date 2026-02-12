@@ -42,26 +42,33 @@ public class CircuitBreakerTestService {
      * Circuit OPEN 시 호출
      */
     private String fallback(Throwable t) {
+
         if (t instanceof CallNotPermittedException) {
             log.warn(
                     "event=CIRCUIT_OPEN circuit={} trace_id={}",
                     CIRCUIT_NAME,
                     MDC.get("trace_id")
             );
-            return "서킷 브레이커 OPEN";
+
+            throw new ApiException(
+                    "CIRCUIT_OPEN",
+                    "circuit breaker is open",
+                    HttpStatus.SERVICE_UNAVAILABLE
+            );
         }
 
         log.warn(
-                "event=CIRCUIT_FALLBACK circuit={} trace_id={} cause={}",
+                "event=CIRCUIT_ERROR circuit={} trace_id={} cause={}",
                 CIRCUIT_NAME,
                 MDC.get("trace_id"),
                 t.getClass().getSimpleName()
         );
 
         throw new ApiException(
-                "CIRCUIT_OPEN",
-                "circuit breaker is open",
-                HttpStatus.SERVICE_UNAVAILABLE
+                "CIRCUIT_ERROR",
+                "temporary failure",
+                HttpStatus.INTERNAL_SERVER_ERROR
         );
     }
+
 }
