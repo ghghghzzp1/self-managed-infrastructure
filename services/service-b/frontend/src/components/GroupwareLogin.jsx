@@ -2,14 +2,19 @@ import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import './GroupwareLogin.css';
 
-function LIcon() {
+function LockIcon() {
   return (
     <svg
-      className="l-icon"
+      className="lock-icon"
       viewBox="0 0 24 24"
-      fill="currentColor"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
     >
-      <path d="M8 4h4v14H8V4zm0 14h10v-3H8v3z" />
+      <rect x="3" y="11" width="18" height="11" rx="2" ry="2" />
+      <path d="M7 11V7a5 5 0 0 1 10 0v4" />
     </svg>
   );
 }
@@ -33,7 +38,7 @@ function GroupwareLogin() {
     <div className="groupware-login">
       <div className="login-card">
         <div className="login-icon-wrap">
-          <LIcon />
+          <LockIcon />
         </div>
         <h1 className="login-title">Exit8 Groupware</h1>
         <p className="login-subtitle">사내 문서 관리 시스템 로그인</p>

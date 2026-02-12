@@ -20,17 +20,17 @@
   width: 56px;
   height: 56px;
   margin: 0 auto 1.25rem;
-  background: #6a5acd;
+  background: #e8e4f5;
   border-radius: 50%;
   display: flex;
   align-items: center;
   justify-content: center;
 }
 
-.l-icon {
+.lock-icon {
   width: 28px;
   height: 28px;
-  color: #fff;
+  color: #6a5acd;
 }
 
 .login-title {
