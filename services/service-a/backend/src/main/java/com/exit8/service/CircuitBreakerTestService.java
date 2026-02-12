@@ -1,8 +1,9 @@
 package com.exit8.service;
 
 import com.exit8.exception.ApiException;
-import com.exit8.logging.LogEvent;
+import io.github.resilience4j.circuitbreaker.CallNotPermittedException;
 import io.github.resilience4j.circuitbreaker.annotation.CircuitBreaker;
+import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.slf4j.MDC;
 import org.springframework.http.HttpStatus;
@@ -10,6 +11,7 @@ import org.springframework.stereotype.Service;
 
 @Slf4j
 @Service
+@RequiredArgsConstructor
 public class CircuitBreakerTestService {
 
     private static final String CIRCUIT_NAME = "testCircuit";
@@ -40,12 +42,20 @@ public class CircuitBreakerTestService {
      * Circuit OPEN 시 호출
      */
     private String fallback(Throwable t) {
+        if (t instanceof CallNotPermittedException) {
+            log.warn(
+                    "event=CIRCUIT_OPEN circuit={} trace_id={}",
+                    CIRCUIT_NAME,
+                    MDC.get("trace_id")
+            );
+            return "서킷 브레이커 OPEN";
+        }
+
         log.warn(
-                "event={} circuit={} trace_id={} message={}",
-                LogEvent.CIRCUIT_OPEN,
+                "event=CIRCUIT_FALLBACK circuit={} trace_id={} cause={}",
                 CIRCUIT_NAME,
                 MDC.get("trace_id"),
-                t.getMessage()
+                t.getClass().getSimpleName()
         );
 
         throw new ApiException(

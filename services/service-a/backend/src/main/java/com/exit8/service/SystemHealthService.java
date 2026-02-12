@@ -1,17 +1,23 @@
 package com.exit8.service;
 
 import com.exit8.dto.SystemHealthStatus;
+import com.exit8.dto.SystemSnapshot;
 import com.exit8.exception.ApiException;
 import com.zaxxer.hikari.HikariDataSource;
 import com.zaxxer.hikari.HikariPoolMXBean;
 import io.github.resilience4j.circuitbreaker.CircuitBreaker;
 import io.github.resilience4j.circuitbreaker.CircuitBreakerRegistry;
+import io.micrometer.core.instrument.Counter;
+import io.micrometer.core.instrument.MeterRegistry;
+import io.micrometer.core.instrument.Timer;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 
 import javax.sql.DataSource;
-import java.sql.Connection;
+import java.time.ZoneId;
+import java.time.ZonedDateTime;
+import java.util.concurrent.TimeUnit;
 
 @Service
 @RequiredArgsConstructor
@@ -21,7 +27,12 @@ public class SystemHealthService {
 
     private final CircuitBreakerRegistry circuitBreakerRegistry;
     private final DataSource dataSource;   // HikariDataSource
+    private final MeterRegistry meterRegistry;
 
+    /**
+     * 기존 Health 판단 로직 (운영 상태 판정용)
+     * 이 메서드는 절대 Raw 계측 용도로 사용하지 않는다.
+     */
     public SystemHealthStatus getCurrentStatus() {
 
         CircuitBreaker circuitBreaker =
@@ -34,7 +45,6 @@ public class SystemHealthService {
 
         String cbState = circuitBreaker.getState().name();
 
-        // 기본값
         String status = "UP";
         String reason = null;
 
@@ -43,8 +53,21 @@ public class SystemHealthService {
             return new SystemHealthStatus(
                     "DOWN",
                     cbState,
-                    120,
+                    null,
                     "CIRCUIT_BREAKER_OPEN"
+            );
+        }
+
+        Long avgResponseTimeMs = null;
+
+        Timer timer = meterRegistry
+                .find("load.scenario")
+                .tag("type", "cpu")
+                .timer();
+
+        if (timer != null) {
+            avgResponseTimeMs = Math.round(
+                    timer.mean(TimeUnit.MILLISECONDS)
             );
         }
 
@@ -52,23 +75,9 @@ public class SystemHealthService {
             return new SystemHealthStatus(
                     "DEGRADED",
                     cbState,
-                    120,
+                    avgResponseTimeMs,
                     "CIRCUIT_BREAKER_HALF_OPEN"
             );
-        }
-
-        /* DB liveness 체크 (DOWN 아님, DEGRADED 판단용) */
-        boolean dbAlive = true;
-
-        try (Connection conn = dataSource.getConnection()) {
-            dbAlive = conn.isValid(1);
-        } catch (Exception e) {
-            dbAlive = false;
-        }
-
-        if (!dbAlive) {
-            status = "DEGRADED";
-            reason = "DB_CONNECTION_ISSUE";
         }
 
         /* DB 상태는 CLOSED 일 때만 평가 */
@@ -76,38 +85,100 @@ public class SystemHealthService {
             HikariPoolMXBean pool = hikari.getHikariPoolMXBean();
 
             if (pool == null) {
-                throw new ApiException(
-                        "DB_POOL_UNAVAILABLE",
-                        "hikari pool mbean not available",
-                        HttpStatus.INTERNAL_SERVER_ERROR
-                );
-            }
-
-            int active = pool.getActiveConnections();
-            int idle = pool.getIdleConnections();
-            int waiting = pool.getThreadsAwaitingConnection();
-
-            // 커넥션 대기 발생 = 이미 병목
-            if (waiting > 0) {
                 status = "DEGRADED";
-                reason = "DB_CONNECTION_POOL_WAITING";
-            }
+                reason = "DB_POOL_MBEAN_UNAVAILABLE";
+            } else {
+                int active = pool.getActiveConnections();
+                int idle = pool.getIdleConnections();
+                int waiting = pool.getThreadsAwaitingConnection();
 
-            // idle 0 + active 과다 → 위험 신호
-            if (idle == 0 && active > 0) {
-                status = "DEGRADED";
-                reason = "DB_CONNECTION_POOL_EXHAUSTED";
+                if (waiting > 0) {
+                    status = "DEGRADED";
+                    reason = "DB_CONNECTION_POOL_WAITING";
+                }
+
+                if (idle == 0 && waiting > 0) {
+                    status = "DEGRADED";
+                    reason = "DB_CONNECTION_POOL_EXHAUSTED";
+                }
             }
         }
-
-        // 임시 평균 응답 시간 (실험 단계)
-        long avgResponseTimeMs = 120;
 
         return new SystemHealthStatus(
                 status,
                 cbState,
                 avgResponseTimeMs,
                 reason
+        );
+    }
+
+    /**
+     *  부하 테스트 분석 전용 Snapshot API
+     *
+     * - 상태 판단하지 않음
+     * - Raw 계측값만 반환
+     * - JMeter 시간축과 매핑 목적
+     */
+    public SystemSnapshot getSnapshot() {
+
+        // CircuitBreaker 상태 확보
+        CircuitBreaker circuitBreaker =
+                circuitBreakerRegistry.circuitBreaker(CIRCUIT_NAME);
+
+        String cbState = circuitBreaker.getState().name();
+
+        // Hikari Pool Raw 값 초기화
+        int active = 0;
+        int idle = 0;
+        int total = 0;
+        int waiting = 0;
+
+        // DataSource가 Hikari인 경우에만 계측
+        if (dataSource instanceof HikariDataSource hikari) {
+            HikariPoolMXBean pool = hikari.getHikariPoolMXBean();
+
+            if (pool != null) {
+                active = pool.getActiveConnections();
+                idle = pool.getIdleConnections();
+                total = pool.getTotalConnections();
+                waiting = pool.getThreadsAwaitingConnection();
+            }
+        }
+
+        // Hikari timeout 누적 카운터 확보 (Micrometer 기반)
+        double timeoutCount = 0;
+
+        Counter timeoutCounter = meterRegistry
+                .find("hikaricp.connections.timeout")
+                .counter();
+
+        if (timeoutCounter != null) {
+            timeoutCount = timeoutCounter.count();
+        }
+
+        // 평균 응답 시간 (실험용 메트릭)
+        Long avgResponseTimeMs = null;
+
+        Timer timer = meterRegistry
+                .find("load.scenario")
+                .tag("type", "cpu")
+                .timer();
+
+        if (timer != null) {
+            avgResponseTimeMs =
+                    Math.round(timer.mean(TimeUnit.MILLISECONDS));
+        }
+
+        // Snapshot은 판단하지 않고 Raw 값만 반환
+        return new SystemSnapshot(
+                ZonedDateTime.now(ZoneId.of("Asia/Seoul")), // timestamp (DTO 타입이 ZonedDateTime임)
+                cbState,
+                active,
+                idle,
+                total,
+                waiting,
+                timeoutCount,
+                avgResponseTimeMs
         );
     }
 }
