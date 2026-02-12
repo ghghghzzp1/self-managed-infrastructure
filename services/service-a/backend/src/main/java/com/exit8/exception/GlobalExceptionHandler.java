@@ -45,7 +45,7 @@ public class GlobalExceptionHandler {
         log.error(
                 "event=UNHANDLED_EXCEPTION trace_id={}",
                 MDC.get("trace_id"),
-                e.getMessage()
+                e
         );
 
         return ResponseEntity
