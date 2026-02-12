@@ -70,9 +70,9 @@ exit8/
 |---------|------|-------|-------------|
 | Nginx Proxy Manager | 80, 443, 81 | jc21/nginx-proxy-manager | Reverse Proxy / SSL |
 | Service-A Backend | 8080 (internal) | exit8/service-a-backend | Spring Boot API |
-| Service-A Frontend | 3000 → 8080 | exit8/service-a-frontend | Nginx + Static Files |
+| Service-A Frontend | 3000 → 8080 | exit8/service-a-frontend | Nginx + React + Vite |
 | Service-B Backend | 8000 (internal) | exit8/service-b-backend | FastAPI API |
-| Service-B Frontend | 3002 → 8080 | exit8/service-b-frontend | Nginx + Static Files |
+| Service-B Frontend | 3002 → 8080 | exit8/service-b-frontend | Nginx + React + Vite |
 | PostgreSQL | 5432 | postgres:15-alpine | Database |
 | Redis | 6379 | redis:7-alpine | Cache |
 | Vault | 8200 | hashicorp/vault | Secrets Management |
@@ -130,7 +130,7 @@ NPM Admin UI (`http://localhost:81`)에서 Proxy Host 설정:
 | `/` | service-a-frontend | 8080 |
 | `/api/v1` | service-a-backend | 8080 |
 | `/login` | service-b-frontend | 8080 |
-| `/api/v2` | service-b-backend | 8000 |
+| `/api/v1` | service-b-backend | 8000 |
 
 > **Note:** 프론트엔드 컨테이너는 non-root 사용자로 실행되므로 내부 포트가 80 → 8080으로 변경되었습니다. NPM Proxy Host에서 Forward Port를 `8080`으로 설정하세요.
 
