@@ -44,7 +44,7 @@ class VaultClient:
                 
         except Exception as e:
             logger.error("Failed to initialize Vault client", extra={
-                "error": str(e),
+                "stack_trace": str(e),
                 "vault_url": self.vault_url
             })
             self.client = None
@@ -87,7 +87,7 @@ class VaultClient:
             
         except Exception as e:
             logger.error("Failed to retrieve secret from Vault", extra={
-                "error": str(e),
+                "stack_trace": str(e),
                 "path": path
             })
             return None
