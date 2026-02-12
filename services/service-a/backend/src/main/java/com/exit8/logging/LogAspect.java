@@ -36,6 +36,7 @@ public class LogAspect {
             // 정상 종료 이벤트
             log.info("event={} method={} durationMs={}", LogEvent.LOAD_END, method, duration);
 
+
             return result;
 
         } catch (Exception e) {
@@ -66,6 +67,7 @@ public class LogAspect {
                 );
 
             }
+
             throw e;
         }
         // trace_id clear 금지 (요청 종료 시 Filter에서 일괄 처리)
