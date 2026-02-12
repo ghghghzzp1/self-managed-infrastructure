@@ -3,7 +3,6 @@ package com.exit8.filter;
 import com.exit8.logging.LogEvent;
 import io.github.bucket4j.Bandwidth;
 import io.github.bucket4j.Bucket;
-import io.github.bucket4j.Bucket4j;
 import io.github.bucket4j.Refill;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
@@ -12,14 +11,15 @@ import jakarta.servlet.http.HttpServletResponse;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
-import org.springframework.stereotype.Component;
 import org.springframework.web.filter.OncePerRequestFilter;
-import org.springframework.beans.factory.annotation.Value;
+import com.github.benmanes.caffeine.cache.Cache;
+import com.github.benmanes.caffeine.cache.Caffeine;
+
+import java.util.concurrent.TimeUnit;
+
 
 import java.io.IOException;
 import java.time.Duration;
-import java.util.Map;
-import java.util.concurrent.ConcurrentHashMap;
 
 
 @Slf4j
@@ -35,12 +35,16 @@ public class RateLimitFilter extends OncePerRequestFilter {
     private final ClientIpResolver clientIpResolver;
     private final boolean rateLimitEnabled;
 
-    // IP별 Bucket 저장소 (실험용: 메모리 기반)
-    private final Map<String, Bucket> bucketStore = new ConcurrentHashMap<>();
+    // IP별 Bucket 저장소 (TTL + 최대 크기 제한)
+    private final Cache<String, Bucket> bucketStore =
+            Caffeine.newBuilder()
+                    .expireAfterAccess(10, TimeUnit.MINUTES)   // 10분간 요청 없으면 제거
+                    .maximumSize(10_000)                       // 최대 1만 IP 제한
+                    .build();
 
     public RateLimitFilter(
             ClientIpResolver clientIpResolver,
-            @Value("${rate-limit.enabled:false}") boolean rateLimitEnabled
+            boolean rateLimitEnabled
     ) {
         this.clientIpResolver = clientIpResolver;
         this.rateLimitEnabled = rateLimitEnabled;
@@ -66,7 +70,7 @@ public class RateLimitFilter extends OncePerRequestFilter {
 
         // ClientIpResolver를 사용하여 요청자의 IP 식별
         String clientIp = clientIpResolver.resolve(request);
-        Bucket bucket = bucketStore.computeIfAbsent(clientIp, this::createBucket);
+        Bucket bucket = bucketStore.get(clientIp, this::createBucket);
 
         // 토큰 소비 시도 (Rate Limit 체크)
         if (bucket.tryConsume(1)) {

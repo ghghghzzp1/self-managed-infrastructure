@@ -15,9 +15,9 @@ spring:
     hikari:
       maximum-pool-size: 50  # 동시에 가질 수 있는 커넥션 수 증가
       minimum-idle: 10 # 커넥션 풀의 “항상 유지되는 최소 유휴(Idle) 커넥션 수
-      connection-timeout: 5000 # 커넥션 획득 대기 시간 (5초)
-      validation-timeout: 2000 # 커넥션 검증 시 최대 2초까지 대기
-      leak-detection-threshold: 20000 # 20초 이상 커넥션을 점유하면 경고 (현재 발생 중인 에러 방지)
+      connection-timeout: 3000 # 커넥션 획득 대기 시간 (3초)
+      validation-timeout: 1000 # 커넥션 검증 시 최대 1초까지 대기
+      leak-detection-threshold: 10000 # 10초 이상 커넥션을 점유하면 경고 (현재 발생 중인 에러 방지)
 
   # Vault 설정을 최우선으로 가져오도록 명시
   config:
@@ -81,3 +81,4 @@ resilience4j.circuitbreaker:
 # Rate Limit 적용
 rate-limit:
   enabled: false # true
+g
