@@ -1,0 +1,78 @@
+.myinfo-page.groupware-page {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1.5rem;
+}
+
+.myinfo-page .page-card {
+  width: 100%;
+  max-width: 400px;
+  background: #fff;
+  border-radius: 12px;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.08);
+  padding: 2.5rem 2rem;
+  text-align: center;
+}
+
+.myinfo-page .page-title {
+  font-size: 1.5rem;
+  font-weight: 600;
+  color: #1a1a2e;
+  margin-bottom: 0.5rem;
+}
+
+.myinfo-page .page-subtitle {
+  font-size: 0.9rem;
+  color: #6b7280;
+  margin-bottom: 1.75rem;
+}
+
+.myinfo-page .myinfo-placeholder {
+  text-align: left;
+  padding: 1rem;
+  background: #f8f8fa;
+  border-radius: 8px;
+  margin-bottom: 1rem;
+}
+
+.myinfo-page .myinfo-placeholder p {
+  margin: 0.5rem 0;
+  font-size: 0.95rem;
+  color: #374151;
+}
+
+.myinfo-page .myinfo-hint {
+  margin-top: 1rem;
+  font-size: 0.8rem;
+  color: #9ca3af !important;
+}
+
+.myinfo-page .page-actions {
+  margin-top: 0.5rem;
+}
+
+.myinfo-page .btn {
+  width: 100%;
+  padding: 0.75rem 1rem;
+  font-size: 0.95rem;
+  font-weight: 500;
+  border: none;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: background-color 0.2s, opacity 0.2s;
+}
+
+.myinfo-page .btn:active {
+  opacity: 0.9;
+}
+
+.myinfo-page .btn-primary {
+  background: #6a5acd;
+  color: #fff;
+}
+
+.myinfo-page .btn-primary:hover {
+  background: #5b4bb8;
+}
