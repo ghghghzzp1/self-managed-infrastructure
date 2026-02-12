@@ -59,13 +59,20 @@ async def login(
 
         # 3. 로그인 성공 여부 및 로그 기록
         login_success = True if user else False
-        log_event = "LOGIN_SUCCESS" if login_success else "AUTH_UNAUTHORIZED"
         
-        logger.info(log_event, extra={
-            "input_user": login_data.username[:50],
-            "ip": client_ip_var.get(),
-            "success": login_success
-        })
+        # 로그인 성공/실패에 따라 레벨 분리
+        if login_success:
+            logger.info("LOGIN_SUCCESS", extra={
+                "input_user": login_data.username[:50],
+                "ip": client_ip_var.get(),
+                "success": True
+            })
+        else:
+            logger.warning("AUTH_UNAUTHORIZED", extra={
+                "input_user": login_data.username[:50],
+                "ip": client_ip_var.get(),
+                "success": False
+            })
 
         if login_success:
             return create_response(success_code=200, data={

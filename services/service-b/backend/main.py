@@ -7,7 +7,7 @@ from app.core.logger import logger
 from app.core.vault_client import vault_client
 from app.database.session import engine
 from app.models import Base
-
+from app.routers import auth
 
 # FastAPI 앱 생성
 app = FastAPI(
@@ -15,6 +15,8 @@ app = FastAPI(
     version="2.0.0",
     description="Security Lab - Vault Integrated Backend (Service B)"
 )
+
+app.include_router(auth.router, prefix="/api/v1/auth", tags=["auth"])
 
 # CORS 설정
 app.add_middleware(
