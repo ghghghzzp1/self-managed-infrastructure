@@ -20,7 +20,7 @@ services:
     volumes:
       - npm_data:/data
       - npm_letsencrypt:/etc/letsencrypt
-      - ./services/npm/custom/http_redirect.conf:/data/nginx/custom/http_redirect.conf:ro
+      - ./services/npm/custom/http_redirect.conf:/data/nginx/custom/http_redirect.conf
     networks:
       - frontend
       - backend
@@ -137,7 +137,7 @@ services:
     container_name: service-a-frontend
     restart: unless-stopped
     ports:
-      - "3000:80"
+      - "3000:8080"
     networks:
       - frontend
       - backend
@@ -145,7 +145,7 @@ services:
       service-a-backend:
         condition: service_healthy
     healthcheck:
-      test: ["CMD", "wget", "-q", "--spider", "http://localhost:80/health"]
+      test: ["CMD", "wget", "-q", "--spider", "http://127.0.0.1:8080/health"]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -195,7 +195,7 @@ services:
     container_name: service-b-frontend
     restart: unless-stopped
     ports:
-      - "3002:80"
+      - "3002:8080"
     networks:
       - frontend
       - backend
@@ -203,7 +203,7 @@ services:
       service-b-backend:
         condition: service_healthy
     healthcheck:
-      test: ["CMD", "wget", "-q", "--spider", "http://localhost:80/health"]
+      test: ["CMD", "wget", "-q", "--spider", "http://127.0.0.1:8080/health"]
       interval: 30s
       timeout: 10s
       retries: 3
