@@ -1,7 +1,6 @@
 spring:
   application:
     name: service-a-backend
-
   jpa:
     database-platform: org.hibernate.dialect.PostgreSQLDialect
     hibernate:
@@ -10,14 +9,6 @@ spring:
     properties:
       hibernate:
         format_sql: true
-
-  datasource:
-    hikari:
-      maximum-pool-size: 50  # 동시에 가질 수 있는 커넥션 수 증가
-      minimum-idle: 10 # 커넥션 풀의 “항상 유지되는 최소 유휴(Idle) 커넥션 수
-      connection-timeout: 3000 # 커넥션 획득 대기 시간 (3초)
-      validation-timeout: 1000 # 커넥션 검증 시 최대 1초까지 대기
-      leak-detection-threshold: 10000 # 10초 이상 커넥션을 점유하면 경고 (현재 발생 중인 에러 방지)
 
   # Vault 설정을 최우선으로 가져오도록 명시
   config:
@@ -44,6 +35,9 @@ server:
   port: 8080
 
 management:
+  health:
+    circuitbreakers:
+      enabled: true # 서킷 브레이커 상태를 /actuator/health에 포함
   endpoints:
     web:
       exposure:

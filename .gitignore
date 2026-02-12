@@ -37,6 +37,3 @@ target/
 # Gradle Wrapper (must be committed)
 !services/service-a/backend/gradle/wrapper/gradle-wrapper.jar
 !services/service-a/backend/gradle/wrapper/gradle-wrapper.properties
-
-# jmeter
-services/service-a/jmeter
