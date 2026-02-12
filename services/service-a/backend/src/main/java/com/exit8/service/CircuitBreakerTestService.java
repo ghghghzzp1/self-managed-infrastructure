@@ -1,7 +1,6 @@
 package com.exit8.service;
 
 import com.exit8.exception.ApiException;
-import com.exit8.logging.LogEvent;
 import io.github.resilience4j.circuitbreaker.CallNotPermittedException;
 import io.github.resilience4j.circuitbreaker.annotation.CircuitBreaker;
 import lombok.RequiredArgsConstructor;
@@ -59,12 +58,10 @@ public class CircuitBreakerTestService {
                 t.getClass().getSimpleName()
         );
 
-        return "일시적 오류";
-
-//        throw new ApiException(
-//                "CIRCUIT_OPEN",
-//                "circuit breaker is open",
-//                HttpStatus.SERVICE_UNAVAILABLE
-//        );
+        throw new ApiException(
+                "CIRCUIT_OPEN",
+                "circuit breaker is open",
+                HttpStatus.SERVICE_UNAVAILABLE
+        );
     }
 }
