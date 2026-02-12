@@ -1,6 +1,7 @@
 import { Routes, Route } from 'react-router-dom';
 import GroupwareLogin from './components/GroupwareLogin';
 import SignUp from './components/SignUp';
+import Home from './components/Home';
 import MyInfo from './components/MyInfo';
 import './App.css';
 
@@ -10,6 +11,7 @@ function App() {
       <Routes>
         <Route path="/" element={<GroupwareLogin />} />
         <Route path="/signup" element={<SignUp />} />
+        <Route path="/home" element={<Home />} />
         <Route path="/myinfo" element={<MyInfo />} />
       </Routes>
     </div>

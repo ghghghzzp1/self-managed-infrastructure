@@ -26,15 +26,12 @@ function GroupwareLogin() {
 
   const handleLogin = (e) => {
     e.preventDefault();
-    // API 연결 전 - UI만
+    // API 연결 전 - 로그인 성공 시 홈으로 이동 (UI만)
+    navigate('/home');
   };
 
   const handleSignUp = () => {
     navigate('/signup');
-  };
-
-  const handleMyInfo = () => {
-    navigate('/myinfo');
   };
 
   return (
@@ -75,13 +72,6 @@ function GroupwareLogin() {
             onClick={handleSignUp}
           >
             회원가입
-          </button>
-          <button
-            type="button"
-            className="btn btn-secondary"
-            onClick={handleMyInfo}
-          >
-            내 정보 조회
           </button>
         </div>
 

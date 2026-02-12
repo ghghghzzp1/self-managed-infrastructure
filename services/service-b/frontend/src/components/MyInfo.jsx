@@ -4,8 +4,8 @@ import './MyInfo.css';
 function MyInfo() {
   const navigate = useNavigate();
 
-  const handleBackToLogin = () => {
-    navigate('/');
+  const handleBackToHome = () => {
+    navigate('/home');
   };
 
   return (
@@ -24,9 +24,9 @@ function MyInfo() {
           <button
             type="button"
             className="btn btn-primary"
-            onClick={handleBackToLogin}
+            onClick={handleBackToHome}
           >
-            로그인으로 돌아가기
+            홈으로
           </button>
         </div>
       </div>
