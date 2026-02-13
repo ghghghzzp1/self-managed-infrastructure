@@ -3,8 +3,10 @@ package com.exit8.controller;
 import com.exit8.dto.DefaultResponse;
 import com.exit8.service.LoadScenarioService;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.web.bind.annotation.*;
 
+@Slf4j
 @RestController
 @RequestMapping("/api/load")
 @RequiredArgsConstructor
@@ -21,6 +23,7 @@ public class LoadScenarioController {
     @PostMapping("/db-read")
     public DefaultResponse<Void> dbReadLoad(
             @RequestParam(name = "repeatCount", defaultValue = "1") int repeatCount) {
+        log.info("repeatCount = {}", repeatCount);
         loadScenarioService.simulateDbReadLoad(repeatCount);
         return DefaultResponse.success(200);
     }
@@ -28,6 +31,7 @@ public class LoadScenarioController {
     @PostMapping("/db-write")
     public DefaultResponse<Void> dbWrite(
         @RequestParam(name = "repeatCount", defaultValue = "1") int repeatCount) {
+        log.info("repeatCount = {}", repeatCount);
         loadScenarioService.simulateDbWriteLoad(repeatCount);
         return DefaultResponse.success(200);
     }
