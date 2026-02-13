@@ -85,6 +85,8 @@ services:
     restart: unless-stopped
     ports:
       - "3000:8080"
+    volumes:
+      - ./logs/service-a-nginx:/var/log/nginx
     networks:
       - frontend
       - backend
@@ -128,6 +130,8 @@ services:
     restart: unless-stopped
     ports:
       - "3002:8080"
+    volumes:
+      - ./logs/service-b-nginx:/var/log/nginx
     networks:
       - frontend
       - backend
