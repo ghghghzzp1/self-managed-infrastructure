@@ -95,18 +95,8 @@
                           testname="Attack DB Read"
                           enabled="true">
           <stringProp name="HTTPSampler.method">POST</stringProp>
-          <stringProp name="HTTPSampler.path">/api/load/db-read</stringProp>
+          <stringProp name="HTTPSampler.path">/api/load/db-read?repeatCount=${__P(ATTACK_REPEAT,1)}</stringProp>
           <boolProp name="HTTPSampler.postBodyRaw">false</boolProp>
-
-          <elementProp name="HTTPSampler.arguments" elementType="Arguments">
-            <collectionProp name="Arguments.arguments">
-              <elementProp name="repeatCount" elementType="Argument">
-                <stringProp name="Argument.name">repeatCount</stringProp>
-                <stringProp name="Argument.value">${__P(ATTACK_REPEAT,1)}</stringProp>
-                <stringProp name="Argument.metadata">=</stringProp>
-              </elementProp>
-            </collectionProp>
-          </elementProp>
         </HTTPSamplerProxy>
 
         <hashTree/>
@@ -161,23 +151,13 @@
         <hashTree/>
 
         <!-- Normal HTTP Request (DB READ) -->
-        <HTTPSamplerProxy guiclass="HttpTestSampleGui"
+          <HTTPSamplerProxy guiclass="HttpTestSampleGui"
                           testclass="HTTPSamplerProxy"
-                          testname="Normal DB Read"
+                          testname="Attack DB Read"
                           enabled="true">
           <stringProp name="HTTPSampler.method">POST</stringProp>
-          <stringProp name="HTTPSampler.path">/api/load/db-read</stringProp>
+          <stringProp name="HTTPSampler.path">/api/load/db-read?repeatCount=${__P(NORMAL_REPEAT,1)}</stringProp>
           <boolProp name="HTTPSampler.postBodyRaw">false</boolProp>
-
-          <elementProp name="HTTPSampler.arguments" elementType="Arguments">
-            <collectionProp name="Arguments.arguments">
-              <elementProp name="repeatCount" elementType="Argument">
-                <stringProp name="Argument.name">repeatCount</stringProp>
-                <stringProp name="Argument.value">${__P(NORMAL_REPEAT,1)}</stringProp>
-                <stringProp name="Argument.metadata">=</stringProp>
-              </elementProp>
-            </collectionProp>
-          </elementProp>
         </HTTPSamplerProxy>
 
         <hashTree/>

@@ -40,8 +40,9 @@ POST /api/load/db-write?repeatCount=1
 
 ### How long
 - 요청 간격 및 유지 시간
-- 입력 파라미터로 부하를 키우지 않는다
-- 부하의 강도는 Threads 수로 제어한다. Delay는 API의 응답 특성(READ vs WRITE)에 맞춰 설정된 상수이며, 실험 도중 변경하지 않는다.
+- 부하의 강도는 Threads 수로 제어한다.
+- 단, DB 내부 자원 고갈(Resource Exhaustion) 실험에서는 요청 1건당 자원 점유 시간을 증가시키기 위해 repeatCount를 보조적으로 사용할 수 있다.
+- repeatCount는 동시성 증가 수단이 아니며, 동일 조건 비교 실험에서는 반드시 고정값을 유지한다.
 
 ---
 
@@ -101,6 +102,11 @@ Normal-TG
 
 ```
 
+※ Resource Exhaustion Test에서는 다음이 추가로 허용된다.
+- repeatCount 증가
+- Delay 0ms
+- Pool Size 축소
+
 ---
 
 ## 6. 디렉터리 구조
@@ -113,17 +119,33 @@ services/service-a/
 ```
 
 ## 7. 실험 제약 조건
-### 변수 통제
-- Rate Limit ON/OFF 비교 시에는 동일한 Thread 단계에서만 비교한다.
-- Thread 수를 변경하는 것은 임계점 탐색 단계이며, 방어 기법 비교 단계에서는 동일 조건을 유지한다.
-- 실험 결과 차이는 **Rate Limit ON/OFF** 에서만 발생해야 한다.
-- repeatCount는 모든 실험에서 1로 고정한다.
-- 입력 파라미터를 통한 부하 증가는 허용하지 않는다.
 
+### Concurrency Stress Test (기본 실험)
 
-### 성공 판단 기준
-- 정상 트래픽의 평균 응답 시간이 임계 구간 이전 수준을 유지하면 방어 성공으로 판단한다.
-- 실험의 최종 목적은 방어 기제의 유효성 검증이다. 따라서 Attack-TG가 유입될 때 Normal-TG의 응답 성공률과 지연 시간이 안정적으로 유지된다면(Rate Limit에 의해 공격 IP만 차단됨으로써), 이를 실험의 성공으로 정의한다.
+1. 목적
+   - 동시 요청 증가에 따른 임계 구간 탐색
+   - Rate Limit / CircuitBreaker 보호 효과 검증
+2. 제약
+   - repeatCount = 1
+   - DB Pool = 50 (기본값)
+   - Delay = 0ms 금지
+   - Thread 수만 단계적으로 증가
+   - ON/OFF 비교는 동일 Thread 단계에서만 수행
+
+### Resource Exhaustion Test (고갈 유도 실험)
+1. 목적
+   - DB Connection Pool 고갈 상황 강제 재현
+   - 내부 대기열 증가 및 timeout 발생 관측
+   - 방어 기제의 극한 상황 보호 능력 확인
+2. 허용 사항
+   - repeatCount > 1 허용
+   - DB Pool Override 허용 `-Dspring.datasource.hikari.maximum-pool-size=5`
+   - Delay 0ms 허용
+   - Ramp-up 단축 허용
+3. 제약
+   - Concurrency Stress Test 결과와 직접 비교하지 않는다.
+   - 고갈 실험은 “임계점 재현” 목적이며 성능 비교 목적이 아니다.
+
 ---
 
 ## 8. Docker 기반 실행
@@ -326,7 +348,8 @@ docker run --rm \
 
 ### 두 시나리오의 차이
 > 부하= Thread 수 × 요청 간격 × 실험 시간   
-> repeatCount = 1 통일
+> Concurrency Stress Test에서는 repeatCount = 1로 통일한다 (Resource Exhaustion Test는 예외)
+
 
 | 항목          | READ            | WRITE         |
 | ----------- | --------------- | ------------- |

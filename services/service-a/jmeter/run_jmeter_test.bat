@@ -34,10 +34,21 @@ echo.
 set /p POOL_MODE="풀 고갈 실험 모드를 활성화하시겠습니까? (y/n): "
 
 if /i "!POOL_MODE!"=="y" (
-    set "HIKARI_OVERRIDE=-Dspring.datasource.hikari.maximum-pool-size=5"
-    echo [풀 고갈 모드 활성화] maximum-pool-size=5
+    set "HIKARI_OVERRIDE=-Dspring.datasource.hikari.maximum-pool-size=5 -Dspring.datasource.hikari.connection-timeout=1000"
+    set "ATTACK_REPEAT=100"
+    set "NORMAL_REPEAT=1"
+    set "RAMP=1"
+    set "LOOPS=500"
+    set "DELAY=0"
+    echo [풀 고갈 모드 활성화]
+    echo   maximum-pool-size=5
+    echo   repeatCount=100 (attack)
 ) else (
     set "HIKARI_OVERRIDE="
+    set "ATTACK_REPEAT=20"
+    set "NORMAL_REPEAT=1"
+    set "RAMP=30"
+    set "LOOPS=50"
     echo [기본 풀 설정 사용]
 )
 
@@ -46,6 +57,7 @@ echo ---------------------------------------
 echo [실행 설정]
 echo   - 테스트 유형 : !MODE!
 echo   - 공격 스레드 : !THREADS!
+echo   - Attack Repeat : !ATTACK_REPEAT!
 echo ---------------------------------------
 
 docker run --rm ^
@@ -60,15 +72,17 @@ docker run --rm ^
   -Jjmeter.save.saveservice.response_data=false ^
   -Jjmeter.save.saveservice.response_headers=false ^
   -Jjmeter.save.saveservice.requestHeaders=false ^
-  -Jjmeter.save.saveservice.samplerData=false ^
+  -Jjmeter.save.saveservice.samplerData=true ^
   -Jjmeter.save.saveservice.assertion_results=none ^
   -Jjmeter.save.saveservice.bytes=true ^
   -Jjmeter.save.saveservice.latency=true ^
   -Jjmeter.save.saveservice.connect_time=true ^
   -JATTACK_THREADS=!THREADS! ^
-  -JATTACK_RAMP=30 ^
+  -JATTACK_RAMP=!RAMP! ^
   -JATTACK_DELAY=!DELAY! ^
-  -JATTACK_LOOPS=50 ^
+  -JATTACK_LOOPS=!LOOPS! ^
+  -JATTACK_REPEAT=!ATTACK_REPEAT! ^
+  -JNORMAL_REPEAT=!NORMAL_REPEAT! ^
   -JNORMAL_THREADS=3 ^
   -JNORMAL_DELAY=1000 ^
   -JNORMAL_LOOPS=50

@@ -39,7 +39,6 @@
                    testclass="ThreadGroup"
                    testname="Attack-TG"
                    enabled="true">
-        <stringProp name="ThreadGroup.on_sample_error">continue</stringProp>
 
         <elementProp name="ThreadGroup.main_controller" elementType="LoopController">
           <boolProp name="LoopController.continue_forever">false</boolProp>
@@ -63,6 +62,11 @@
               <stringProp name="Header.name">X-Forwarded-For</stringProp>
               <stringProp name="Header.value">10.10.10.10</stringProp>
             </elementProp>
+
+            <elementProp name="" elementType="Header">
+              <stringProp name="Header.name">Content-Type</stringProp>
+              <stringProp name="Header.value">application/x-www-form-urlencoded</stringProp>
+            </elementProp>
           </collectionProp>
         </HeaderManager>
         <hashTree/>
@@ -79,24 +83,14 @@
         <!-- Attack HTTP Request (DB WRITE) -->
         <HTTPSamplerProxy guiclass="HttpTestSampleGui"
                           testclass="HTTPSamplerProxy"
-                          testname="Attack DB Write"
+                          testname="Attack DB Read"
                           enabled="true">
           <stringProp name="HTTPSampler.method">POST</stringProp>
-          <stringProp name="HTTPSampler.path">/api/load/db-write</stringProp>
+          <stringProp name="HTTPSampler.path">/api/load/db-write?repeatCount=${__P(ATTACK_REPEAT,1)}</stringProp>
           <boolProp name="HTTPSampler.postBodyRaw">false</boolProp>
-
-          <elementProp name="HTTPSampler.arguments" elementType="Arguments">
-            <collectionProp name="Arguments.arguments">
-              <elementProp name="repeatCount" elementType="Argument">
-                <stringProp name="Argument.name">repeatCount</stringProp>
-                <stringProp name="Argument.value">${__P(ATTACK_REPEAT,1)}</stringProp>
-                <stringProp name="Argument.metadata">=</stringProp>
-              </elementProp>
-            </collectionProp>
-          </elementProp>
         </HTTPSamplerProxy>
-
         <hashTree/>
+
       </hashTree>
 
       <!-- ================= Normal Thread Group ================= -->
@@ -104,7 +98,6 @@
                    testclass="ThreadGroup"
                    testname="Normal-TG"
                    enabled="true">
-        <stringProp name="ThreadGroup.on_sample_error">continue</stringProp>
 
         <elementProp name="ThreadGroup.main_controller" elementType="LoopController">
           <boolProp name="LoopController.continue_forever">false</boolProp>
@@ -128,6 +121,11 @@
               <stringProp name="Header.name">X-Forwarded-For</stringProp>
               <stringProp name="Header.value">20.20.20.20</stringProp>
             </elementProp>
+
+            <elementProp name="" elementType="Header">
+              <stringProp name="Header.name">Content-Type</stringProp>
+              <stringProp name="Header.value">application/x-www-form-urlencoded</stringProp>
+            </elementProp>
           </collectionProp>
         </HeaderManager>
         <hashTree/>
@@ -144,24 +142,14 @@
         <!-- Normal HTTP Request (DB WRITE) -->
         <HTTPSamplerProxy guiclass="HttpTestSampleGui"
                           testclass="HTTPSamplerProxy"
-                          testname="Normal DB Write"
+                          testname="Attack DB Read"
                           enabled="true">
           <stringProp name="HTTPSampler.method">POST</stringProp>
-          <stringProp name="HTTPSampler.path">/api/load/db-write</stringProp>
+          <stringProp name="HTTPSampler.path">/api/load/db-write?repeatCount=${__P(NORMAL_REPEAT,1)}</stringProp>
           <boolProp name="HTTPSampler.postBodyRaw">false</boolProp>
-
-          <elementProp name="HTTPSampler.arguments" elementType="Arguments">
-            <collectionProp name="Arguments.arguments">
-              <elementProp name="repeatCount" elementType="Argument">
-                <stringProp name="Argument.name">repeatCount</stringProp>
-                <stringProp name="Argument.value">${__P(NORMAL_REPEAT,1)}</stringProp>
-                <stringProp name="Argument.metadata">=</stringProp>
-              </elementProp>
-            </collectionProp>
-          </elementProp>
         </HTTPSamplerProxy>
-
         <hashTree/>
+
       </hashTree>
 
     </hashTree>
