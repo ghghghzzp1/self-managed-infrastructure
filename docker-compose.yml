@@ -20,7 +20,7 @@ services:
     volumes:
       - npm_data:/data
       - npm_letsencrypt:/etc/letsencrypt
-      - ./services/npm/custom/http_redirect.conf:/data/nginx/custom/http_redirect.conf:ro
+      - ./services/npm/custom/http_redirect.conf:/data/nginx/custom/http_redirect.conf
     networks:
       - frontend
       - backend
@@ -49,6 +49,8 @@ services:
       -c maintenance_work_mem=128MB
       -c effective_cache_size=512MB
       -c max_connections=100
+    ports:
+      - "5432:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
     networks:
@@ -135,14 +137,15 @@ services:
     container_name: service-a-frontend
     restart: unless-stopped
     ports:
-      - "3000:80"
+      - "3000:8080"
     networks:
       - frontend
       - backend
     depends_on:
-      - service-a-backend
+      service-a-backend:
+        condition: service_healthy
     healthcheck:
-      test: ["CMD", "wget", "-q", "--spider", "http://localhost:80/health"]
+      test: ["CMD", "wget", "-q", "--spider", "http://127.0.0.1:8080/health"]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -192,14 +195,15 @@ services:
     container_name: service-b-frontend
     restart: unless-stopped
     ports:
-      - "3002:80"
+      - "3002:8080"
     networks:
       - frontend
       - backend
     depends_on:
-      - service-b-backend
+      service-b-backend:
+        condition: service_healthy
     healthcheck:
-      test: ["CMD", "wget", "-q", "--spider", "http://localhost:80/health"]
+      test: ["CMD", "wget", "-q", "--spider", "http://127.0.0.1:8080/health"]
       interval: 30s
       timeout: 10s
       retries: 3

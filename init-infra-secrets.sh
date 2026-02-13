@@ -41,6 +41,7 @@ check_vault_status() {
 }
 
 # Function to get secret from Vault
+# Returns: value on success, empty string on failure (sets return code 1)
 get_secret() {
     local path=$1
     local key=$2
@@ -48,8 +49,8 @@ get_secret() {
     local value=$(vault kv get -field="$key" "secret/infra/$path" 2>/dev/null)
 
     if [ -z "$value" ]; then
-        echo -e "${RED}Error: Failed to get $path/$key from Vault${NC}"
-        exit 1
+        echo -e "${RED}Error: Failed to get $path/$key from Vault${NC}" >&2
+        return 1
     fi
 
     echo "$value"
@@ -102,12 +103,12 @@ main() {
 
     # Fetch Redis credentials (optional)
     echo -e "${YELLOW}Fetching Redis credentials...${NC}"
-    REDIS_PASSWORD=$(get_secret "redis" "password" || echo "")
-    if [ -n "$REDIS_PASSWORD" ]; then
+    REDIS_PASSWORD=""
+    if REDIS_PASSWORD=$(get_secret "redis" "password"); then
         update_env "REDIS_PASSWORD" "$REDIS_PASSWORD"
         echo -e "${GREEN}✓ Redis credentials updated${NC}"
     else
-        echo -e "${YELLOW}⊘ Redis password not set (optional)${NC}"
+        echo -e "${YELLOW}⊘ Redis password not set in Vault (optional, skipping)${NC}"
     fi
 
     # Fetch Grafana credentials

@@ -2,11 +2,19 @@
 # Allows read access to service-b specific secrets
 
 # KV v2 secrets access
+path "secret/data/service-b-backend" {
+  capabilities = ["read"]
+}
+
 path "secret/data/service-b-backend/*" {
   capabilities = ["read", "list"]
 }
 
 # Metadata access (for listing)
+path "secret/metadata/service-b-backend" {
+  capabilities = ["read", "list"]
+}
+
 path "secret/metadata/service-b-backend/*" {
   capabilities = ["read", "list"]
 }
