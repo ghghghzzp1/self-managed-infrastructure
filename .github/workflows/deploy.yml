@@ -397,6 +397,11 @@ jobs:
             # Pull latest code
             git pull origin main
 
+            # Ensure nginx log directories exist for Wazuh log collection
+            mkdir -p logs/service-a-nginx logs/service-b-nginx
+            chown 1001:1001 logs/service-a-nginx logs/service-b-nginx
+            echo "✓ Nginx log directories ready"
+
             # Build list of services to update
             SERVICES_TO_UPDATE=""
 
