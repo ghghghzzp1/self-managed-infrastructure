@@ -83,7 +83,7 @@
         <!-- Attack HTTP Request (DB WRITE) -->
         <HTTPSamplerProxy guiclass="HttpTestSampleGui"
                           testclass="HTTPSamplerProxy"
-                          testname="Attack DB Read"
+                          testname="Attack DB Write"
                           enabled="true">
           <stringProp name="HTTPSampler.method">POST</stringProp>
           <stringProp name="HTTPSampler.path">/api/load/db-write?repeatCount=${__P(ATTACK_REPEAT,1)}</stringProp>
@@ -142,7 +142,7 @@
         <!-- Normal HTTP Request (DB WRITE) -->
         <HTTPSamplerProxy guiclass="HttpTestSampleGui"
                           testclass="HTTPSamplerProxy"
-                          testname="Attack DB Read"
+                          testname="Normal DB Write"
                           enabled="true">
           <stringProp name="HTTPSampler.method">POST</stringProp>
           <stringProp name="HTTPSampler.path">/api/load/db-write?repeatCount=${__P(NORMAL_REPEAT,1)}</stringProp>

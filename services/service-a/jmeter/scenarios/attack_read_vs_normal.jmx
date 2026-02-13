@@ -153,7 +153,7 @@
         <!-- Normal HTTP Request (DB READ) -->
           <HTTPSamplerProxy guiclass="HttpTestSampleGui"
                           testclass="HTTPSamplerProxy"
-                          testname="Attack DB Read"
+                          testname="Normal DB Read"
                           enabled="true">
           <stringProp name="HTTPSampler.method">POST</stringProp>
           <stringProp name="HTTPSampler.path">/api/load/db-read?repeatCount=${__P(NORMAL_REPEAT,1)}</stringProp>
