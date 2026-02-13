@@ -1,0 +1,175 @@
+:root {
+  --bg-page: #0f1419;
+  --bg-card: #1a2332;
+  --card-border: rgba(255, 255, 255, 0.06);
+  --text-primary: #ffffff;
+  --text-secondary: #b0b8c4;
+  --text-muted: #8b95a5;
+  --btn-read-bg: #2563eb;
+  --btn-read-hover: #3b82f6;
+  --btn-write-bg: #ea580c;
+  --btn-write-hover: #f97316;
+  --status-green: #22c55e;
+  --glow-green: rgba(34, 197, 94, 0.5);
+}
+
+.dashboard {
+  min-height: 100vh;
+  padding: 3rem 1.5rem;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  background: var(--bg-page);
+  color: var(--text-primary);
+}
+
+.dashboard__header {
+  text-align: center;
+  margin-bottom: 2.5rem;
+}
+
+.dashboard__title {
+  font-size: clamp(1.75rem, 4vw, 2.25rem);
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  margin-bottom: 0.5rem;
+}
+
+.dashboard__subtitle {
+  font-size: 1rem;
+  color: var(--text-secondary);
+  font-weight: 400;
+}
+
+.dashboard__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1rem;
+  justify-content: center;
+  margin-bottom: 2.5rem;
+}
+
+/* Buttons */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.75rem 1.5rem;
+  font-size: 1rem;
+  font-weight: 500;
+  color: #fff;
+  border: none;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: background-color 0.2s, opacity 0.2s;
+}
+
+.btn:disabled {
+  cursor: default;
+  opacity: 0.9;
+}
+
+.btn--read {
+  background: var(--btn-read-bg);
+}
+
+.btn--read:hover:not(:disabled) {
+  background: var(--btn-read-hover);
+}
+
+.btn--write {
+  background: var(--btn-write-bg);
+}
+
+.btn--write:hover:not(:disabled) {
+  background: var(--btn-write-hover);
+}
+
+.btn__icon {
+  display: inline-block;
+  width: 0.75rem;
+  height: 0.75rem;
+  flex-shrink: 0;
+}
+
+.btn__icon--play {
+  border-left: 0.5rem solid currentColor;
+  border-top: 0.35rem solid transparent;
+  border-bottom: 0.35rem solid transparent;
+  width: 0;
+  height: 0;
+  margin-left: 2px;
+}
+
+.btn__icon--write {
+  border: 2px solid currentColor;
+  border-top-width: 3px;
+  border-radius: 1px;
+  width: 0.5rem;
+  height: 0.5rem;
+}
+
+/* Circuit Breaker card */
+.circuit-breaker {
+  width: 100%;
+  max-width: 420px;
+  padding: 2rem;
+  background: var(--bg-card);
+  border: 1px solid var(--card-border);
+  border-radius: 12px;
+  text-align: center;
+  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.03);
+}
+
+.circuit-breaker__title {
+  font-size: 1.125rem;
+  font-weight: 600;
+  margin-bottom: 1.5rem;
+  color: var(--text-primary);
+}
+
+.circuit-breaker__indicator {
+  position: relative;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  margin-bottom: 1rem;
+}
+
+.circuit-breaker__glow {
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+  background: var(--status-green);
+  box-shadow:
+    0 0 20px var(--glow-green),
+    0 0 40px rgba(34, 197, 94, 0.25);
+}
+
+.circuit-breaker__status {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 1.125rem;
+  color: var(--text-primary);
+  margin-bottom: 0.25rem;
+}
+
+.circuit-breaker__dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--status-green);
+  flex-shrink: 0;
+}
+
+.circuit-breaker__description {
+  font-size: 0.9375rem;
+  color: var(--text-secondary);
+  margin-bottom: 0.5rem;
+}
+
+.circuit-breaker__note {
+  font-size: 0.8125rem;
+  color: var(--text-muted);
+}

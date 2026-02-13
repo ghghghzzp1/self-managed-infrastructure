@@ -1,0 +1,70 @@
+.home-page.groupware-page {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1.5rem;
+}
+
+.home-page .page-card {
+  width: 100%;
+  max-width: 400px;
+  background: #fff;
+  border-radius: 12px;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.08);
+  padding: 2.5rem 2rem;
+  text-align: center;
+}
+
+.home-page .page-title {
+  font-size: 1.5rem;
+  font-weight: 600;
+  color: #1a1a2e;
+  margin-bottom: 0.5rem;
+}
+
+.home-page .page-subtitle {
+  font-size: 0.9rem;
+  color: #6b7280;
+  margin-bottom: 1.75rem;
+}
+
+.home-page .home-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.home-page .btn {
+  width: 100%;
+  padding: 0.75rem 1rem;
+  font-size: 0.95rem;
+  font-weight: 500;
+  border: none;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: background-color 0.2s, opacity 0.2s;
+}
+
+.home-page .btn:active {
+  opacity: 0.9;
+}
+
+.home-page .btn-primary {
+  background: #6a5acd;
+  color: #fff;
+}
+
+.home-page .btn-primary:hover {
+  background: #5b4bb8;
+}
+
+.home-page .btn-secondary {
+  background: #fff;
+  color: #6a5acd;
+  border: 1px solid #6a5acd;
+}
+
+.home-page .btn-secondary:hover {
+  background: #f5f3ff;
+}

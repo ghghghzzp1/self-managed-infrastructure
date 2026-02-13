@@ -6,6 +6,7 @@ from sqlalchemy import text, select
 from app.database.session import get_db
 from app.core.logger import logger
 from app.models import User 
+from app.core.context import client_ip_var
 
 router = APIRouter()
 
@@ -47,7 +48,7 @@ async def login(
                 "input_user": login_data.username[:50],
                 "patterns": str(detected),
                 "type": "SQL_INJECTION_ATTEMPT",
-                "ip": request.client.host
+                "ip": client_ip_var.get()
             })
 
         # 2. 취약점: 입력값 검증 없이 쿼리 실행 (name 컬럼도 조회)
@@ -58,13 +59,20 @@ async def login(
 
         # 3. 로그인 성공 여부 및 로그 기록
         login_success = True if user else False
-        log_event = "LOGIN_SUCCESS" if login_success else "AUTH_UNAUTHORIZED"
         
-        logger.info(log_event, extra={
-            "input_user": login_data.username[:50],
-            "ip": request.client.host,
-            "success": login_success
-        })
+        # 로그인 성공/실패에 따라 레벨 분리
+        if login_success:
+            logger.info("LOGIN_SUCCESS", extra={
+                "input_user": login_data.username[:50],
+                "ip": client_ip_var.get(),
+                "success": True
+            })
+        else:
+            logger.warning("AUTH_UNAUTHORIZED", extra={
+                "input_user": login_data.username[:50],
+                "ip": client_ip_var.get(),
+                "success": False
+            })
 
         if login_success:
             return create_response(success_code=200, data={
@@ -81,7 +89,7 @@ async def login(
             )
 
     except Exception as e:
-                logger.error("LOGIN_ERROR", extra={"error": str(e), "input_user": login_data.username[:50]})
+                logger.error("LOGIN_ERROR", extra={"stack_trace": str(e), "input_user": login_data.username[:50]})
                 return JSONResponse(status_code=500, content=create_response(500, error={"code": "SERVER_ERROR"}))
 
 # --- 2. 회원가입 (4가지 정보 입력: ID, Name, PW, Email) ---
@@ -117,7 +125,7 @@ async def register(reg_data: RegisterRequest, db: AsyncSession = Depends(get_db)
         return create_response(201, data={"username": new_user.username, "message": "User created"})
 
     except Exception as e:
-        logger.error("REGISTER_ERROR", extra={"error": str(e)})
+        logger.error("REGISTER_ERROR", extra={"stack_trace": str(e)})
         return JSONResponse(status_code=500, content={"message": "Register failed"})
 
 
