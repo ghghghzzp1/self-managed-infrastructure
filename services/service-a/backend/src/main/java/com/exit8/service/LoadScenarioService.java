@@ -9,8 +9,12 @@ import io.micrometer.core.annotation.Timed;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Sort;
 
-import java.util.List;
+import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionTemplate;
 
 @Service
 @RequiredArgsConstructor
@@ -18,6 +22,7 @@ public class LoadScenarioService {
 
     private final DummyDataRepository dummyDataRepository;
     private final LoadTestLogRepository loadTestLogRepository;
+    private final TransactionTemplate transactionTemplate;
 
     private static final int MAX_REPEAT = 10_000;
     private static final long MAX_DURATION_MS = 10_000;
@@ -39,7 +44,6 @@ public class LoadScenarioService {
                     HttpStatus.BAD_REQUEST
             );
         }
-
 
         long start = System.currentTimeMillis();
         long end = start + durationMs;
@@ -64,6 +68,7 @@ public class LoadScenarioService {
             extraTags = {"type", "db_read"},
             histogram = true
     )
+    @Transactional(readOnly = true)
     public void simulateDbReadLoad(int repeatCount) {
         if (repeatCount <= 0 || repeatCount > MAX_REPEAT) {
             throw new ApiException(
@@ -73,18 +78,11 @@ public class LoadScenarioService {
             );
         }
 
-        long start = System.currentTimeMillis();
-
         for (int i = 0; i < repeatCount; i++) {
-            List<DummyDataRecord> records =
-                    dummyDataRepository.findAll();
+            Pageable pageable = PageRequest.of(0, 20, Sort.by("id").ascending());
+            dummyDataRepository.findAll(pageable);
         }
 
-        long duration = System.currentTimeMillis() - start;
-
-        loadTestLogRepository.save(
-                new LoadTestLog("DB_READ", duration)
-        );
     }
 
     /**
@@ -104,18 +102,21 @@ public class LoadScenarioService {
             );
         }
 
-        long start = System.currentTimeMillis();
-
         for (int i = 0; i < repeatCount; i++) {
-            dummyDataRepository.save(
-                    new DummyDataRecord("payload-" + i)
-            );
+            final int idx = i;
+
+            transactionTemplate.execute(status -> {
+                try {
+                    dummyDataRepository.save(
+                            new DummyDataRecord("payload-" + idx)
+                    );
+                    dummyDataRepository.flush();
+                } catch (Exception e) {
+                    // 트랜잭션만 롤백
+                    status.setRollbackOnly();
+                }
+                return null;
+            });
         }
-
-        long duration = System.currentTimeMillis() - start;
-
-        loadTestLogRepository.save(
-                new LoadTestLog("DB_WRITE", duration)
-        );
     }
 }

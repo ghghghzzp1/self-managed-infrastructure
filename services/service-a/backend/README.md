@@ -13,12 +13,12 @@
 4. [실행 환경 분리 전략](#4-실행-환경-분리-전략)
 5. [데이터 계층 구성](#5-데이터-계층-구성)
 6. [API 분류](#6-api-분류)
-7. [부하 / 실험 API](#7-부하--실험-api)
-8. [Service 책임 원칙](#8-service-책임-원칙)
-9. [공통 응답 포맷](#9-공통-응답-포맷)
-10. [로깅 전략](#10-로깅-전략)
-11. [Docker 기반 개발 환경](#11-docker-기반-개발-환경)
-12. [로컬 Docker 테스트 절차](#12-로컬-docker-테스트-절차)
+7. [Service 책임 원칙](#7-service-책임-원칙)
+8. [공통 응답 포맷](#8-공통-응답-포맷)
+9. [부하 / 실험 API](#9-부하--실험-api)
+10. [관측 아키텍처](#10-관측-아키텍처)
+11. [로깅 전략](#11-로깅-전략)
+12. [Docker 기반 개발 환경](#12-docker-기반-개발-환경)
 13. [Vault 연동](#13-Vault-연동)
 14. [앞으로의 확장 / 완료 현황 정리](#14-앞으로의-확장--완료-현황-정리)
 
@@ -91,27 +91,25 @@ services/service-a/backend/
 │   │   └── GlobalExceptionHandler.java
 │   │
 │   ├── filter/            # HTTP 진입 trace_id 생성
-│   │   └── TraceIdFilter.java
-│   │
+│   │   └── TraceIdFilter.java          # 요청 식별
+│   │   ├── RateLimitFilter.java        # 차단 로직
+│   │   └── ClientIpResolver.java       # IP 해석 책임 분리
+│   │ 
 │   ├── logging/           # AOP 기반 관측 로깅
 │   │   ├── LogAspect.java                  # LOAD_START / END / FAIL 트리거
 │   │   ├── LogLevelPolicy.java             # INFO / WARN / ERROR 판단
 │   │   ├── LogEvent.java                   # 이벤트 상수 (LOAD_START 등)
 │   │   └── TraceContext.java               # MDC 기반 trace_id 접근 전용
 │   │
-│   ├── observability/     # 메트릭/트레이싱 설정
-│   │   ├── metrics/
-│   │   │   └── MetricsConfig.java           # Micrometer 커스텀 설정
-│   │   └── tracing/
-│   │       └── TraceConstants.java          # trace_id 키 등 공통 상수
-│   │
 │   └── config/
-│       ├── datasource/
+│       ├── datasource/                     # DB 설정
 │       │   └── PostgresConfig.java
-│       ├── redis/
+│       ├── redis/                          # edis 설정
 │       │   └── RedisConfig.java
-│       └── observability/
-│           └── MetricsConfig.java
+│       ├── observability/                  # Metrics / tracing 설정
+│       │   └── MetricsConfig.java
+│       └── filter/                         # Filter 설정
+│           └── FilterOrderConfig.java      # 순서만 제어
 │
 └── src/main/resources/
     ├── application.yml
@@ -181,7 +179,79 @@ service-a-backend:spring:health:status
 
 ---
 
-## 7. 부하 / 실험 API
+## 7. Service 책임 원칙
+
+### 기본 원칙
+- Controller는 얇게 유지 → 요청 파라미터 바인딩 + Service 호출만 담당
+- 모든 검증·제어는 Service 담당
+- checked exception 외부 전파 ❌
+- 부하 시나리오 = Service 책임
+
+<br>
+
+### UI ↔ API ↔ Service 정합성 원칙
+- UI 버튼 · API 엔드포인트 · Service 메서드가 1:1로 매핑
+
+| UI 버튼     | API                                         | Service                                                               |
+| --------- | ------------------------------------------- | --------------------------------------------------------------------- |
+| CPU 부하 시작 | `/api/load/cpu`                             | `LoadScenarioService.generateCpuLoad()`                               |
+| DB 부하 시작  | `/api/load/db-read`<br>`/api/load/db-write` | `LoadScenarioService.simulateDbReadLoad()`<br>`simulateDbWriteLoad()` |
+| 상태 표시     | `/api/system/health`                        | `SystemHealthService.getCurrentStatus()`                              |
+| 차단 테스트    | `/api/circuit/test`                         | `CircuitBreakerTestService.callWithDelay()`                           |
+
+<br>
+
+### 규칙 강제 이유
+1. 관측 가능성(Observability)
+    - 로그, 메트릭, 트레이스가 Service 단위로 정확히 분리
+2. 부하 시나리오 단순화
+    - “어떤 버튼이 어떤 부하를 만들었는지” 즉시 추적 가능
+3. UI ↔ 백엔드 커뮤니케이션 명확화
+    - UI 팀 / 인프라 팀 / 백엔드 팀 간 오해 제거
+4. AOP 로깅 구조와 완벽하게 호환
+    - Service.*(..) 기준으로 로깅 / 시간 측정 / 실패 감지 가능
+
+---
+
+## 8. 공통 응답 포맷
+```
+{
+  "httpCode": 200,
+  "data": {},
+  "error": null
+}
+
+```
+- httpCode : 실제 HTTP 상태 코드와 동일
+- data : 성공 시 결과 데이터 (없으면 null 또는 {})
+- error : 성공 시 항상 null
+
+<br>
+
+에러 시:
+```
+{
+  "httpCode": 500,
+  "data": null,
+  "error": {
+    "code": "INVALID_PARAM",
+    "message": "durationMs max is 10000"
+  }
+}
+```
+- data : 에러 시 항상 null
+- error.code : 비즈니스 에러 코드 (고정 문자열)
+- error.message : 클라이언트 전달용 메시지
+
+| 상황                   | 분류             |
+| -------------------- | -------------- |
+| Circuit OPEN         | 503            |
+| DB 병목                | 200 + DEGRADED |
+| 잘못된 파라미터             | 400            |
+
+---
+
+## 9. 부하 / 실험 API
 
 ### SystemHealthController
 - UI 빠른 상태 확인용
@@ -244,79 +314,31 @@ DOWN
 
 ---
 
-## 8. Service 책임 원칙
+## 10. 관측 아키텍처
 
-### 기본 원칙
-- Controller는 얇게 유지 → 요청 파라미터 바인딩 + Service 호출만 담당
-- 모든 검증·제어는 Service 담당
-- checked exception 외부 전파 ❌
-- 부하 시나리오 = Service 책임
+### RateLimit
+- IP 기반 1차 방어 레이어
+- 반복적 부하를 차단하고 차단 이벤트 기록
 
-<br>
+### CircuitBreaker
+- 2차 방어 레이어
+- 내부 임계치 초과 시 OPEN 상태로 전환하여 시스템 보호
 
-### UI ↔ API ↔ Service 정합성 원칙
-- UI 버튼 · API 엔드포인트 · Service 메서드가 1:1로 매핑
+### Prometheus 메트릭 노출
+- Actuator + Micrometer 기반 메트릭 수집
+- Grafana에서 시계열 분석 수행
 
-| UI 버튼     | API                                         | Service                                                               |
-| --------- | ------------------------------------------- | --------------------------------------------------------------------- |
-| CPU 부하 시작 | `/api/load/cpu`                             | `LoadScenarioService.generateCpuLoad()`                               |
-| DB 부하 시작  | `/api/load/db-read`<br>`/api/load/db-write` | `LoadScenarioService.simulateDbReadLoad()`<br>`simulateDbWriteLoad()` |
-| 상태 표시     | `/api/system/health`                        | `SystemHealthService.getCurrentStatus()`                              |
-| 차단 테스트    | `/api/circuit/test`                         | `CircuitBreakerTestService.callWithDelay()`                           |
+### SystemSnapshot API
+- 프론트엔드 상단 상태 표시를 위한 단일 데이터 소스
+- Circuit 상태, DB Pool 상태, 평균 응답 시간 등
 
-<br>
-
-### 규칙 강제 이유
-1. 관측 가능성(Observability)
-   - 로그, 메트릭, 트레이스가 Service 단위로 정확히 분리
-2. 부하 시나리오 단순화
-   - “어떤 버튼이 어떤 부하를 만들었는지” 즉시 추적 가능
-3. UI ↔ 백엔드 커뮤니케이션 명확화
-   - UI 팀 / 인프라 팀 / 백엔드 팀 간 오해 제거
-4. AOP 로깅 구조와 완벽하게 호환
-   - Service.*(..) 기준으로 로깅 / 시간 측정 / 실패 감지 가능
+### Recent Requests API
+- IP별 요청 이벤트를 구조화하여 제공
+- 200 / 429 / 503 상태 기반 이벤트 피드
 
 ---
 
-## 9. 공통 응답 포맷
-```
-{
-  "httpCode": 200,
-  "data": {},
-  "error": null
-}
-
-```
-- httpCode : 실제 HTTP 상태 코드와 동일
-- data : 성공 시 결과 데이터 (없으면 null 또는 {})
-- error : 성공 시 항상 null
-
-<br>
-
-에러 시:
-```
-{
-  "httpCode": 500,
-  "data": null,
-  "error": {
-    "code": "INVALID_PARAM",
-    "message": "durationMs max is 10000"
-  }
-}
-```
-- data : 에러 시 항상 null
-- error.code : 비즈니스 에러 코드 (고정 문자열)
-- error.message : 클라이언트 전달용 메시지
-
-| 상황                   | 분류             |
-| -------------------- | -------------- |
-| Circuit OPEN         | 503            |
-| DB 병목                | 200 + DEGRADED |
-| 잘못된 파라미터             | 400            |
-
----
-
-## 10. 로깅 전략 
+## 11. 로깅 전략 
 ### 원칙
 - trace_id 기반 요청 추적
 - 비즈니스 로직 로그는 Service / Controller에 두지 않음
@@ -379,6 +401,23 @@ DOWN
 
 <br>
 
+#### RateLimitFilter (앞단 차단 로그)
+- Rate Limit에 의해 차단된 요청은 Service / AOP 흐름에 진입하지 않는다.
+- 따라서 trace_id를 생성하지 않으며, 요청 단위 추적 대상에 포함하지 않는다.
+- Rate Limit 로그는 “처리되지 않은 요청의 통계적 관측” 목적의 인프라 로그로만 기록한다.
+- Rate Limit은 실험 단계별로 ON/OFF 한다
+- 초기 실험은 Rate Limit ❌ 상태에서 진행
+- 이후 동일 시나리오로 Rate Limit 비교
+```
+Request
+  → RateLimitFilter   ← 여기서 차단
+    → TraceIdFilter   (아직 안 탐)
+      → Controller
+        → Service
+```
+
+<br>
+
 ### trace_id 전파 검증 (요청 단위 추적 불변식 확인)
 
 - 로그 확인 (trace_id 기준으로 START/END 로그가 모두 존재해야 함)
@@ -405,23 +444,6 @@ docker exec -it service-a-backend sh -c "grep test-trace-123 /app/logs/app.log"
 curl -X POST "http://localhost:8080/api/load/cpu?durationMs=1000" -H "X-Trace-Id: test-trace-123"
 ```
 
-4. 로그
-```
-{
-  "@timestamp": "2026-02-06T11:09:40.317+09:00",
-  "level": "INFO",
-  "thread_name": "http-nio-8080-exec-6",
-  "message": "event=LOAD_START method=generateCpuLoad",
-  "trace_id": "test-trace-123"
-}
-{
-  "@timestamp": "2026-02-06T11:09:41.442+09:00",
-  "level": "INFO",
-  "thread_name": "http-nio-8080-exec-6",
-  "message": "event=LOAD_END method=generateCpuLoad durationMs=1125",
-  "trace_id": "test-trace-123"
-}
-```
 > ✔ 외부에서 전달된 trace_id(test-trace-123)가 Filter → MDC → AOP → 로그까지 변경 없이 유지됨을 검증한다.
 
 <br>
@@ -436,27 +458,11 @@ curl -X POST "http://localhost:8080/api/load/cpu?durationMs=1000" -H "X-Trace-Id
   - LOAD_START / LOAD_END 로그에 동일한 신규 trace_id가 기록되어야 한다.
   - START와 END 사이에서 trace_id가 달라지면 안 된다.
 
-```
-{
-  "@timestamp": "2026-02-06T11:10:08.109+09:00",
-  "level": "INFO",
-  "thread_name": "http-nio-8080-exec-1",
-  "message": "event=LOAD_START method=generateCpuLoad",
-  "trace_id": "c4fc1fa3-fa11-47a4-987a-90c956a4523a"
-}
-{
-  "@timestamp": "2026-02-06T11:10:18.123+09:00",
-  "level": "INFO",
-  "thread_name": "http-nio-8080-exec-1",
-  "message": "event=LOAD_END method=generateCpuLoad durationMs=10014",
-  "trace_id": "c4fc1fa3-fa11-47a4-987a-90c956a4523a"
-}
-```
 > ✔ trace_id 미존재 요청에서도 요청 단위 추적이 반드시 보장됨을 검증한다.
 
 ---
 
-## 11. Docker 기반 개발 환경
+## 12. Docker 기반 개발 환경
 
 ### Spring Boot 애플리케이션 Docker 이미지화
 - Gradle 기반 Spring Boot 애플리케이션을 Docker 이미지로 패키징
@@ -475,6 +481,7 @@ curl -X POST "http://localhost:8080/api/load/cpu?durationMs=1000" -H "X-Trace-Id
 ### Docker Healthcheck & Spring Actuator 설계 원칙
 - docker-compose를 수정하지 않는 것을 전제로 Spring Actuator Health 동작 설계
 - docker-compose Healthcheck는 /actuator/health 기준으로 HTTP 응답 가능 여부(Liveness) 만 판단
+
 ```
 healthcheck:
   test: ["CMD", "wget", "-q", "--spider", "http://localhost:8080/actuator/health"]
@@ -494,103 +501,16 @@ management:
 - DB / Redis / CircuitBreaker 상태는 Health 판단에서 제외
 - 부하 테스트 중 의존성 장애가 발생해도 컨테이너 유지
 - restart loop 방지
+- application.yml에는 health 판단 로직을 두지 않음
+- health의 의미는 profile별로 완전히 다르게 정의됨
+- docker 환경에서는 관측 정보(state, details)를 노출하지 않음
+- liveness 판단과 observability를 명확히 분리하기 위함
 
 | 레이어             | Health 의미            |
 | --------------- | -------------------- |
 | Docker          | 프로세스 + HTTP 응답 여부    |
 | Spring (docker) | Liveness             |
 | 관측              | Prometheus / Grafana |
-
----
-
-## 12. 로컬 Docker 테스트 절차
-
-### 공용 네트워크 및 볼륨 생성
-```
-# 네트워크 생성
-docker network create frontend
-docker network create backend
-docker network create db
-
-# 데이터 보존을 위한 볼륨 생성 (필요 시)
-docker volume create postgres_data
-docker volume create redis_data
-```
-
-<br>
-
-### DB 및 인프라 컨테이너 실행 
-- PostgreSQL
-```
--- 비밀번호 없이 생성
-docker run -d --name postgres --network db -p 5432:5432 -e POSTGRES_DB=appdb -e POSTGRES_HOST_AUTH_METHOD=trust postgres:15-alpine
-
-docker exec -it postgres psql -U postgres -d appdb
-
--- 로그인 가능한 유저 생성
-CREATE USER admin WITH PASSWORD password_입력;
-
--- DB 접근 권한 부여
-GRANT CONNECT ON DATABASE appdb TO admin;
-
--- public 스키마 사용 권한
-GRANT USAGE, CREATE ON SCHEMA public TO admin;
-
-```
-
-- Redis
-```
-docker run -d --name redis \
-  --network db \
-  -p 6379:6379 \
-  redis:7-alpine redis-server --maxmemory 256mb --maxmemory-policy allkeys-lru
-```
-
-<br>
-
-### SpringBoot 서버 도커라이징
-
-1. Gradle Wrapper를 제대로 생성해서 Git에 포함
-```
-# Windows
-.\gradlew.bat wrapper --gradle-version 8.5
-
-# Linux/Mac
-./gradlew wrapper --gradle-version 8.5
-```
-
-2. 이미지 빌드 (캐시 제거)
-```
-docker build --no-cache -t exit8/service-a-backend:test .
-```
-
-3.  실행
-```
-# 1. 기존에 죽어있는 컨테이너 삭제
-docker rm -f service-a-backend
-
-# 2. 처음부터 db 네트워크로 실행
-docker run -d --name service-a-backend \
-  --network db \
-  -p 8080:8080 \
-  -e SPRING_PROFILES_ACTIVE=docker \
-  -e JAVA_OPTS="-Xms256m -Xmx512m" \
-  exit8/service-a-backend:test
-
-# 3. DB 네트워크 추가 연결 (멀티 네트워크 설정)
-docker network connect backend service-a-backend
-
-```
-
-4. 확인
-```
-curl http://localhost:8080/actuator/health
-```
-
-- 정상 응답 예:
-```
-{"status":"UP"}
-```
 
 ---
 
@@ -606,25 +526,8 @@ curl http://localhost:8080/actuator/health
 - spring.datasource.username / password 하드코딩 제거
 - Vault에 저장된 db.username, db.password를 명시적으로 매핑
 
-### 환경별 경로 분리
-- local / docker 프로필에 따라 Vault 경로 분리
-```
-secret/service-a-backend/local
-secret/service-a-backend/docker
-```
-
-### Docker 실행 환경 검증
-- Vault 컨테이너와 동일 Docker 네트워크에서 실행 
-- `VAULT_URI`, `VAULT_TOKEN은` 환경 변수로만 주입
-
-#### 로컬 검증 환경 
-- Docker 기반 Vault dev mode 사용 
-- KV v2 엔진 활성화 
-- 컨테이너 재시작 시 데이터 영속성 없음 (연동 구조 검증 목적)
-
 #### 검증 항목
 - Spring Cloud Vault Client 기동 시 Vault 연결 
-- 프로필(local / docker)별 Vault 경로 조회 
 - DB 자격 증명 로딩 성공 / 실패 시 기동 결과
 
 ### 의도적으로 제외한 범위
@@ -677,10 +580,13 @@ secret/service-a-backend/docker
    - Spring Cloud Vault Client 연동 구조 검증 완료
    - Vault KV(v2) 기반 PostgreSQL 자격 증명 동적 로딩
      - DB 자격 증명 하드코딩 완전 제거
-   - local / docker 프로필별 Vault 경로 분리 적용
    - 실제 Docker 서비스 실행 경로에서 Vault 연동 기동 확인
    - 운영 고도화(Secret rotation, Auth, HA)는 의도적으로 제외
-
+9. 외부 부하 테스트 연계
+    - 부하 유발 API 구현
+    - JMeter 연계
+    - 동시 사용자 증가에 따른 DB 커넥션 풀 고갈 시 CircuitBreaker OPEN 시점 분석
+        
 <br>
 
 ### ⏳ 아직 진행하지 않은 항목
@@ -700,18 +606,10 @@ secret/service-a-backend/docker
 3. DB 백업 및 로그 정리 시나리오
    - 로그 정리 주기
    - 백업 정책 실험
-4. 외부 부하 테스트 연계
-   - 현재: 부하 유발 API만 구현
-   - 미완: 외부 부하 도구 연계
-   - 미완:
-     - JMeter / Locust 연계
-     - 동시 사용자 증가에 따른
-     - DB 커넥션 풀 고갈
-     - CircuitBreaker OPEN 시점 분석
-5. Redis 캐싱 실험
+4. Redis 캐싱 실험
    - READ 시 캐싱 적용
    - Read Replica + Cache 비교 실험
-6. Spring Security 도입
+5. Spring Security 도입
    - 프론트엔드 연동 전 필수 단계
    - 무제한 호출 / 오남용 방지
    - 실험용 API 보호
