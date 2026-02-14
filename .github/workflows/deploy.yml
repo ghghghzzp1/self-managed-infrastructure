@@ -398,8 +398,9 @@ jobs:
             git pull origin main
 
             # Ensure nginx log directories exist for Wazuh log collection
-            mkdir -p logs/service-a-nginx logs/service-b-nginx
-            sudo chown 1001:1001 logs/service-a-nginx logs/service-b-nginx
+            sudo mkdir -p logs/service-a-nginx logs/service-b-nginx
+            sudo chown -R 1001:1001 ./logs
+            sudo chmod -R 775 ./logs
             echo "✓ Nginx log directories ready"
 
             # Build list of services to update
