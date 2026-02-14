@@ -29,4 +29,8 @@ public final class LogEvent {
 
     /** 예상하지 못한 시스템 예외 */
     public static final String UNHANDLED_EXCEPTION = "UNHANDLED_EXCEPTION";
+
+    /** Rate Limit에 의해 요청이 차단됨 */
+    public static final String RATE_LIMIT_REJECTED = "RATE_LIMIT_REJECTED";
+
 }
