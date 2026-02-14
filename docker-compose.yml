@@ -231,12 +231,17 @@ services:
       VAULT_ADDR: http://0.0.0.0:8200
       SKIP_CHOWN: "true"
       SKIP_SETCAP: "true"
+      VAULT_UNSEAL_KEY_1: ${VAULT_UNSEAL_KEY_1:-}
+      VAULT_UNSEAL_KEY_2: ${VAULT_UNSEAL_KEY_2:-}
+      VAULT_UNSEAL_KEY_3: ${VAULT_UNSEAL_KEY_3:-}
     volumes:
       - ./services/vault/config:/vault/config:rw
       - vault_data:/vault/data
+      - ./services/vault/auto-unseal.sh:/vault/auto-unseal.sh:ro
     cap_add:
       - IPC_LOCK
-    command: server
+    entrypoint: /bin/sh
+    command: ["/vault/auto-unseal.sh"]
     networks:
       - backend
     healthcheck:
