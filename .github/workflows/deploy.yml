@@ -341,6 +341,21 @@ jobs:
             sudo chown -R deploy-bot:developers /opt/exit8/self-managed-infrastructure
             git config --global --add safe.directory /opt/exit8/self-managed-infrastructure
 
+            # Pull latest code (before Vault operations so unseal-vault.sh is available)
+            git pull origin main
+
+            # ===================================
+            # Auto-unseal Vault if sealed
+            # ===================================
+            if ! docker exec vault vault status -address=http://localhost:8200 > /dev/null 2>&1; then
+              echo "Vault is sealed. Running unseal-vault.sh..."
+              chmod +x unseal-vault.sh
+              ./unseal-vault.sh
+              echo "✓ Vault unsealed"
+            else
+              echo "✓ Vault is already unsealed"
+            fi
+
             # ===================================
             # Generate SECRET_IDs on Server (via Vault CLI)
             # ===================================
@@ -393,9 +408,6 @@ jobs:
               ls -la
               exit 1
             fi
-
-            # Pull latest code
-            git pull origin main
 
             # Build list of services to update
             SERVICES_TO_UPDATE=""
