@@ -139,7 +139,7 @@ services:
     ports:
       - "3000:8080"
     volumes:
-      - ./logs/service-a-nginx:/var/log/nginx
+      - service-a-logs:/var/log/nginx
     networks:
       - frontend
       - backend
@@ -199,7 +199,7 @@ services:
     ports:
       - "3002:8080"
     volumes:
-      - ./logs/service-b-nginx:/var/log/nginx
+      - service-b-logs:/var/log/nginx
     networks:
       - frontend
       - backend
@@ -384,3 +384,5 @@ volumes:
   vault_data:
   prometheus_data:
   grafana_data:
+  service-a-logs:
+  service-b-logs:
