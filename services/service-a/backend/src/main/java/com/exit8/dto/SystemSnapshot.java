@@ -24,4 +24,6 @@ public class SystemSnapshot {
 
     // 실험용 평균 응답시간
     private Long avgResponseTimeMs;
+
+    private final boolean rateLimitEnabled;
 }

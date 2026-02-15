@@ -1,8 +1,11 @@
 package com.exit8.service;
 
+import com.exit8.dto.RateLimitToggleResponse;
 import com.exit8.dto.SystemHealthStatus;
 import com.exit8.dto.SystemSnapshot;
 import com.exit8.exception.ApiException;
+import com.exit8.observability.RequestEvent;
+import com.exit8.observability.RequestEventBuffer;
 import com.zaxxer.hikari.HikariDataSource;
 import com.zaxxer.hikari.HikariPoolMXBean;
 import io.github.resilience4j.circuitbreaker.CircuitBreaker;
@@ -13,6 +16,9 @@ import io.micrometer.core.instrument.Timer;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
+
+import java.util.List;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 import javax.sql.DataSource;
 import java.time.ZoneId;
@@ -28,6 +34,10 @@ public class SystemHealthService {
     private final CircuitBreakerRegistry circuitBreakerRegistry;
     private final DataSource dataSource;   // HikariDataSource
     private final MeterRegistry meterRegistry;
+    private final RequestEventBuffer requestEventBuffer;
+
+    // Rate Limit 활성화 상태 (런타임 토글용) 기본값: OFF
+    private final AtomicBoolean rateLimitEnabled = new AtomicBoolean(false);
 
     /**
      * 기존 Health 판단 로직 (운영 상태 판정용)
@@ -58,18 +68,29 @@ public class SystemHealthService {
             );
         }
 
+        // load.scenario 전체 타입(cpu, db_read, db_write 등)의 평균 응답 시간 계산
         Long avgResponseTimeMs = null;
 
-        Timer timer = meterRegistry
+        var timers = meterRegistry
                 .find("load.scenario")
-                .tag("type", "cpu")
-                .timer();
+                .timers();
 
-        if (timer != null) {
-            avgResponseTimeMs = Math.round(
-                    timer.mean(TimeUnit.MILLISECONDS)
-            );
+        if (!timers.isEmpty()) {
+            double totalTime = 0;
+            long totalCount = 0;
+
+            // 모든 Timer의 총 수행 시간과 호출 횟수 합산
+            for (Timer t : timers) {
+                totalTime += t.totalTime(TimeUnit.MILLISECONDS);
+                totalCount += t.count();
+            }
+
+            // 전체 평균 응답 시간(ms) 계산
+            if (totalCount > 0) {
+                avgResponseTimeMs = Math.round(totalTime / totalCount);
+            }
         }
+
 
         if (circuitBreaker.getState() == CircuitBreaker.State.HALF_OPEN) {
             return new SystemHealthStatus(
@@ -178,7 +199,44 @@ public class SystemHealthService {
                 total,
                 waiting,
                 timeoutCount,
-                avgResponseTimeMs
+                avgResponseTimeMs,
+                rateLimitEnabled.get()
         );
     }
+
+    /**
+     * Rate Limit 상태를 ON ↔ OFF로 전환
+     */
+    public RateLimitToggleResponse toggleRateLimit() {
+        boolean prev, next;
+
+        // CAS(Compare-And-Swap) 방식을 유지하여 Thread-safe하게 상태 변경
+        do {
+            prev = rateLimitEnabled.get();
+            next = !prev;
+        } while (!rateLimitEnabled.compareAndSet(prev, next));
+
+        // 상태 변화를 문자열로 생성 (예: "OFF -> ON" 또는 "ON -> OFF")
+        String fromStatus = prev ? "ON" : "OFF";
+        String toStatus = next ? "ON" : "OFF";
+        String statusMessage = String.format("%s -> %s", fromStatus, toStatus);
+
+        return new RateLimitToggleResponse(next, statusMessage);
+    }
+
+    /**
+     * 현재 Rate Limit 활성화 여부 조회
+     */
+    public boolean isRateLimitEnabled() {
+        return rateLimitEnabled.get();
+    }
+
+    /**
+     * 최근 요청 이벤트 조회
+     */
+    public List<RequestEvent> getRecentRequests(int limit) {
+        return requestEventBuffer.getRecent(limit);
+    }
+
+
 }
