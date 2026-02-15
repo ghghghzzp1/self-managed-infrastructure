@@ -1,6 +1,12 @@
 package com.exit8.exception;
 
 import com.exit8.dto.DefaultResponse;
+import com.exit8.filter.ClientIpResolver;
+import com.exit8.logging.LogEvent;
+import com.exit8.observability.RequestEvent;
+import com.exit8.observability.RequestEventBuffer;
+import jakarta.servlet.http.HttpServletRequest;
+import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.slf4j.MDC;
 import org.springframework.http.HttpStatus;
@@ -8,9 +14,15 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 
+import java.time.Instant;
+
 @Slf4j
 @RestControllerAdvice(basePackages = "com.exit8.controller")
+@RequiredArgsConstructor
 public class GlobalExceptionHandler {
+
+    private final RequestEventBuffer requestEventBuffer;
+    private final ClientIpResolver clientIpResolver;
 
     /**
      * 비즈니스 예외 처리
@@ -19,12 +31,34 @@ public class GlobalExceptionHandler {
      * - trace_id 기준으로 요청 추적 가능
      */
     @ExceptionHandler(ApiException.class)
-    public ResponseEntity<DefaultResponse<Void>> handleApiException(ApiException e) {
+    public ResponseEntity<DefaultResponse<Void>> handleApiException(ApiException e,
+                                                                    HttpServletRequest request) {
+
+        String traceId = MDC.get("trace_id");
+        String clientIp = clientIpResolver.resolve(request);
+
         log.warn(
                 "event=BUSINESS_EXCEPTION code={} trace_id={}",
                 e.getCode(),
-                MDC.get("trace_id")
+                traceId
         );
+
+        // 503 (Circuit OPEN)만 이벤트 기록
+        if (e.getStatus() == HttpStatus.SERVICE_UNAVAILABLE) {
+
+            requestEventBuffer.add(
+                    new RequestEvent(
+                            Instant.now(),
+                            traceId,
+                            clientIp,
+                            request.getMethod(),
+                            request.getRequestURI(),
+                            e.getStatus().value(),
+                            LogEvent.CIRCUIT_OPEN,
+                            0L // Circuit OPEN은 실제 비즈니스 실행 전에 차단
+                    )
+            );
+        }
 
         return ResponseEntity
                 .status(e.getStatus())
@@ -56,4 +90,5 @@ public class GlobalExceptionHandler {
                         "서버 내부 오류가 발생했습니다"
                 ));
     }
+
 }

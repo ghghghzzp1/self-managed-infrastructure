@@ -69,14 +69,14 @@ public class RateLimitFilter extends OncePerRequestFilter {
         // TraceIdFilter에서 이미 생성된 trace_id 조회
         String traceId = MDC.get(TraceContext.TRACE_ID_KEY);
 
-        // 런타임 활성화 여부 확인
-        if (!systemHealthService.isRateLimitEnabled()) {
+        // 실험용 API에만 적용
+        if (!request.getRequestURI().startsWith("/api/load")) {
             filterChain.doFilter(request, response);
             return;
         }
 
-        // 실험용 API에만 적용
-        if (!request.getRequestURI().startsWith("/api/load")) {
+        // 런타임 활성화 여부 확인
+        if (!systemHealthService.isRateLimitEnabled()) {
             filterChain.doFilter(request, response);
             return;
         }
@@ -116,7 +116,7 @@ public class RateLimitFilter extends OncePerRequestFilter {
 
         log.warn(
                 "event={} traceId={} ip={} uri={}",
-                LogEvent.RATE_LIMIT_REJECTED,
+                LogEvent.RATE_LIMITED,
                 traceId,
                 clientIp,
                 request.getRequestURI()
