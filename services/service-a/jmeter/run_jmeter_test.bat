@@ -32,17 +32,18 @@ if "%THREADS%"=="" (
 
 echo.
 set /p POOL_MODE="풀 고갈 실험 모드를 활성화하시겠습니까? (y/n): "
+set "POOL_MODE=!POOL_MODE: =!"
 
 if /i "!POOL_MODE!"=="y" (
     set "HIKARI_OVERRIDE=-Dspring.datasource.hikari.maximum-pool-size=5 -Dspring.datasource.hikari.connection-timeout=1000"
-    set "ATTACK_REPEAT=100"
+    set "ATTACK_REPEAT=1000"
     set "NORMAL_REPEAT=1"
     set "RAMP=1"
     set "LOOPS=500"
     set "DELAY=0"
     echo [풀 고갈 모드 활성화]
     echo   maximum-pool-size=5
-    echo   repeatCount=100 (attack)
+    echo   repeatCount=1000 ^(attack^)
 ) else (
     set "HIKARI_OVERRIDE="
     set "ATTACK_REPEAT=20"
