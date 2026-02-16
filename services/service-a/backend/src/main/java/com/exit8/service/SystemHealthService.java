@@ -17,6 +17,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 
+import java.util.Collection;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicBoolean;
 
@@ -38,6 +39,9 @@ public class SystemHealthService {
 
     // Rate Limit 활성화 상태 (런타임 토글용) 기본값: OFF
     private final AtomicBoolean rateLimitEnabled = new AtomicBoolean(false);
+
+    private static final ZoneId ZONE = ZoneId.of("Asia/Seoul");
+
 
     /**
      * 기존 Health 판단 로직 (운영 상태 판정용)
@@ -134,27 +138,22 @@ public class SystemHealthService {
     }
 
     /**
-     *  부하 테스트 분석 전용 Snapshot API
-     *
-     * - 상태 판단하지 않음
-     * - Raw 계측값만 반환
-     * - JMeter 시간축과 매핑 목적
+     * 프론트 상단 상태 표시의 단일 데이터 소스
      */
     public SystemSnapshot getSnapshot() {
 
-        // CircuitBreaker 상태 확보
-        CircuitBreaker circuitBreaker =
+        // CircuitBreaker 상태
+        CircuitBreaker cb =
                 circuitBreakerRegistry.circuitBreaker(CIRCUIT_NAME);
 
-        String cbState = circuitBreaker.getState().name();
+        String cbState = cb.getState().name();
 
-        // Hikari Pool Raw 값 초기화
+        // Hikari Pool Raw 값
         int active = 0;
         int idle = 0;
         int total = 0;
         int waiting = 0;
 
-        // DataSource가 Hikari인 경우에만 계측
         if (dataSource instanceof HikariDataSource hikari) {
             HikariPoolMXBean pool = hikari.getHikariPoolMXBean();
 
@@ -166,33 +165,34 @@ public class SystemHealthService {
             }
         }
 
-        // Hikari timeout 누적 카운터 확보 (Micrometer 기반)
+        // Hikari timeout 누적 카운터
         double timeoutCount = 0;
 
-        Counter timeoutCounter = meterRegistry
-                .find("hikaricp.connections.timeout")
-                .counter();
+        Counter timeoutCounter =
+                meterRegistry.find("hikaricp.connections.timeout").counter();
 
         if (timeoutCounter != null) {
             timeoutCount = timeoutCounter.count();
         }
 
-        // 평균 응답 시간 (실험용 메트릭)
-        Long avgResponseTimeMs = null;
+        // 4전체 HTTP 평균 응답 시간
+        Collection<Timer> timers =
+                meterRegistry.find("http.server.requests").timers();
 
-        Timer timer = meterRegistry
-                .find("load.scenario")
-                .tag("type", "cpu")
-                .timer();
+        double totalTime = 0;
+        long totalCount = 0;
 
-        if (timer != null) {
-            avgResponseTimeMs =
-                    Math.round(timer.mean(TimeUnit.MILLISECONDS));
+        for (Timer t : timers) {
+            totalTime += t.totalTime(TimeUnit.MILLISECONDS);
+            totalCount += t.count();
         }
+
+        Long avgResponseTimeMs =
+                totalCount > 0 ? Math.round(totalTime / totalCount) : null;
 
         // Snapshot은 판단하지 않고 Raw 값만 반환
         return new SystemSnapshot(
-                ZonedDateTime.now(ZoneId.of("Asia/Seoul")), // timestamp (DTO 타입이 ZonedDateTime임)
+                ZonedDateTime.now(ZONE), // timestamp (DTO 타입이 ZonedDateTime임)
                 cbState,
                 active,
                 idle,

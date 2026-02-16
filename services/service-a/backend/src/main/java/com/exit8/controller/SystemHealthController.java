@@ -43,11 +43,11 @@ public class SystemHealthController {
     }
 
     /**
-     *  부하 실험 분석 전용 Snapshot API
+     * Health & Observability 전용 Snapshot API
      *
-     * - 상태 판단하지 않음
+     * - 시스템 상태를 판단하지 않음
      * - Raw 계측값만 반환
-     * - JMeter 시간축과 정렬 비교 목적
+     * - UI / 실험 분석 / 모니터링 용도
      */
     @GetMapping("/snapshot")
     public ResponseEntity<DefaultResponse<SystemSnapshot>> snapshot() {
