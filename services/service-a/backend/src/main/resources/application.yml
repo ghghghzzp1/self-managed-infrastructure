@@ -79,3 +79,7 @@ resilience4j.circuitbreaker:
         - java.lang.Exception
       # 성공으로 간주할 예외 (없음)
       ignore-exceptions: []
+
+# Rate Limit 적용
+rate-limit:
+  enabled: ${RATE_LIMIT_ENABLED:false} # 환경변수로 조절 가능하게 설정

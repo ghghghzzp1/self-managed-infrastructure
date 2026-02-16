@@ -1,10 +1,12 @@
 package com.exit8.exception;
 
+import com.exit8.config.constants.CircuitNames;
 import com.exit8.dto.DefaultResponse;
 import com.exit8.filter.ClientIpResolver;
 import com.exit8.logging.LogEvent;
 import com.exit8.observability.RequestEvent;
 import com.exit8.observability.RequestEventBuffer;
+import io.github.resilience4j.circuitbreaker.CallNotPermittedException;
 import jakarta.servlet.http.HttpServletRequest;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -90,5 +92,49 @@ public class GlobalExceptionHandler {
                         "서버 내부 오류가 발생했습니다"
                 ));
     }
+
+    /**
+     * CircuitBreaker OPEN 상태에서 호출되는 전역 예외 처리기
+     *
+     * - Resilience4j가 CallNotPermittedException을 던질 때 동작
+     * - 서버 내부 오류(500)가 아닌, 보호 상태(503)로 응답
+     * - 관측을 위해 RequestEventBuffer에 CIRCUIT_OPEN 이벤트 기록
+     */
+    @ExceptionHandler(CallNotPermittedException.class)
+    public ResponseEntity<DefaultResponse<Void>> handleCircuitOpen(
+            CallNotPermittedException e,
+            HttpServletRequest request) {
+
+        String traceId = MDC.get("trace_id");
+        String clientIp = clientIpResolver.resolve(request);
+
+        log.warn(
+                "event=CIRCUIT_OPEN circuit={} trace_id={}",
+                CircuitNames.TEST_CIRCUIT,
+                traceId
+        );
+
+        requestEventBuffer.add(
+                new RequestEvent(
+                        Instant.now(),
+                        traceId,
+                        clientIp,
+                        request.getMethod(),
+                        request.getRequestURI(),
+                        HttpStatus.SERVICE_UNAVAILABLE.value(),
+                        LogEvent.CIRCUIT_OPEN,
+                        0L // 실제 비즈니스 로직 실행 전 차단되므로 duration 0
+                )
+        );
+
+        return ResponseEntity
+                .status(HttpStatus.SERVICE_UNAVAILABLE)
+                .body(DefaultResponse.failure(
+                        HttpStatus.SERVICE_UNAVAILABLE.value(),
+                        LogEvent.CIRCUIT_OPEN,
+                        "circuit breaker is open"
+                ));
+    }
+
 
 }

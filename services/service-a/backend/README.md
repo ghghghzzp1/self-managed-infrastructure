@@ -98,7 +98,7 @@ services/service-a/backend/
 │   ├── logging/           # AOP 기반 관측 로깅
 │   │   ├── LogAspect.java                  # LOAD_START / END / FAIL 트리거
 │   │   ├── LogLevelPolicy.java             # INFO / WARN / ERROR 판단
-│   │   ├── LogEvent.java                   # 이벤트 상수 (LOAD_START 등)
+│   │   ├── LogEvent.java                   # 이벤트 도메인 (LOAD_START 등)
 │   │   └── TraceContext.java               # MDC 기반 trace_id 접근 전용
 │   │
 │   ├── observability/     # 실시간 관측 이벤트 및 메모리 버퍼 (프론트 대시보드용)
@@ -111,9 +111,11 @@ services/service-a/backend/
 │       ├── redis/                          # edis 설정
 │       │   └── RedisConfig.java
 │       ├── observability/                  # Metrics / tracing 설정
-│       │   └── MetricsConfig.java          # Counter 추가  
+│       │   └── MetricsConfig.java 
+│       ├── constants/
+│       │   └── CircuitNames.java
 │       └── filter/                         # Filter 설정
-│           └── FilterOrderConfig.java      # 순서만 제어
+│           └── FilterOrderConfig.java      # 순서 제어
 │
 └── src/main/resources/
     ├── application.yml
@@ -247,8 +249,13 @@ service-a-backend:spring:health:status
   ├─ LoadScenarioService
   ├─ SystemHealthService
   ├─ CircuitBreakerTestService
-  ├─ CircuitBreaker   ← 이벤트 발생 지점 2
 
+[Resilience Layer]
+  ├─ Resilience4j CircuitBreaker (AOP Proxy)   ← 이벤트 발생 지점 2
+
+[Exception Layer]
+  ├─ GlobalExceptionHandler  ← CIRCUIT_OPEN 이벤트 기록 지점
+  
 [Observability Layer]
   ├─ Micrometer Counter / Timer
   ├─ RequestEventBuffer (in-memory ring buffer)
@@ -307,12 +314,12 @@ service-a-backend:spring:health:status
 ```
 UP
 - CircuitBreaker 상태: CLOSED
-- DB 커넥션 풀: 정상 (Hikari validation warning 없음)
+- Hikari Pool waitingThreads == 0
 
 DEGRADED
 - CircuitBreaker 상태: HALF_OPEN
-- 또는 DB 커넥션 풀 경고 발생
-  (HikariPool validation warning, 응답 지연 증가 등)
+- Hikari Pool waitingThreads > 0
+- idle == 0 && waiting > 0 (풀 고갈 조짐)
 
 DOWN
 - CircuitBreaker 상태: OPEN
@@ -351,14 +358,13 @@ DOWN
 
 ### CircuitBreakerTestController
 - CircuitBreaker가 언제 OPEN 되는지 눈으로 확인
-- Fallback 동작 검증
 
 #### 동작 방식
 1. 내부에서 의도적으로 timeout 발생
 2. Resilience4j가 실패 누적
 3. OPEN 전환
-4. Fallback 호출
-5. WARN 로그 + 503 응답
+4. CallNotPermittedException 발생
+5. GlobalExceptionHandler에서 503 반환
 
 ---
 
@@ -367,10 +373,15 @@ DOWN
 ### RateLimit
 - IP 기반 1차 방어 레이어
 - 반복적 부하를 차단하고 차단 이벤트 기록
+- application.yml 설정 기반으로 초기 상태 결정
+  - 서버 재시작 시에는 application.yml 설정 값으로 초기화
+- 런타임 toggle API를 통해 변경 가능
 
 ### CircuitBreaker
 - 2차 방어 레이어
 - 내부 임계치 초과 시 OPEN 상태로 전환하여 시스템 보호
+- OPEN 상태에서는 CallNotPermittedException이 즉시 발생
+  - 해당 예외는 GlobalExceptionHandler에서 503으로 변환
 
 ### Prometheus 메트릭 노출
 - Actuator + Micrometer 기반 메트릭 수집
@@ -431,14 +442,17 @@ DOWN
 - 로그 메시지에 포함될 이벤트 타입 상수 정의
 - 이벤트 기준으로 로그 집계 및 분석 가능
 
-  | Event               | 의미                       |
-  | ------------------- | ------------------------ |
-  | LOAD_START          | Service 실행 시작            |
-  | LOAD_END            | 정상 종료                    |
-  | LOAD_FAIL           | 비치명적 실패 (재시도 / fallback) |
-  | LOAD_ERROR          | 치명적 실패                   |
-  | CIRCUIT_OPEN        | CircuitBreaker OPEN      |
-  | UNHANDLED_EXCEPTION | AOP 밖 예외                 |
+  | Event               | 의미                  |
+  | ------------------- |---------------------|
+  | LOAD_START          | Service 실행 시작       |
+  | LOAD_END            | 정상 종료               |
+  | LOAD_FAIL           | 비치명적 실패             |
+  | LOAD_ERROR          | 치명적 실패              |
+  | CIRCUIT_OPEN        | CircuitBreaker OPEN |
+  | UNHANDLED_EXCEPTION | AOP 밖 예외            |
+  | RATE_LIMITED        | RateLimit에 의해 요청 차단 |
+  | BUSINESS_EXCEPTION  | ApiException 발생 (비즈니스 예외) |
+
 
 <br>
 
@@ -592,7 +606,6 @@ management:
 1. Resilience4j 기반 차단 시나리오
    - CircuitBreaker 설정 완료 (testCircuit)
    - OPEN / HALF_OPEN / CLOSED 상태 전이 확인
-   - Fallback 메시지 고정
 2. 부하 테스트 시나리오 구현
    - CPU busy-loop 기반 부하 (/api/load/cpu)
    - DB READ 반복 부하 (/api/load/db-read)
@@ -635,30 +648,33 @@ management:
     - 부하 유발 API 구현
     - JMeter 연계
     - 동시 사용자 증가에 따른 DB 커넥션 풀 고갈 시 CircuitBreaker OPEN 시점 분석
-        
+10.Prometheus 메트릭 확장
+   - Custom Metrics
+     - rate_limit_blocked_total
+     - rate_limit_allowed_total
+   - Built-in Metrics
+     - resilience4j.circuitbreaker.state
+     - hikaricp.connections.*
+     - http.server.requests
+    
 <br>
 
 ### ⏳ 아직 진행하지 않은 항목
 1. `spring_logs` 테이블 실제 연동
    - 현재는 Logback / 콘솔 중심
    - DB 로그 저장은 구조(AOP, 정책, 도메인) 만 설계된 상태
+   - spring_logs 테이블 및 도메인/Repository는 존재
+   - 실제 저장 로직(LogAspect 연계)은 아직 미적용
    - 향후:
      - `LogAspect → SystemLog` 저장
      - 배치 기반 백업 후 truncate 전략 적용
-2. Prometheus 메트릭 확장
-   - 현재: Actuator 기본 메트릭 + 일부 커스텀
-   - 미완:
-     - HTTP 요청 수 / 응답 시간 세분화
-     - CircuitBreaker 상태 메트릭 명시적 노출
-   - 추후:
-     - Custom Meter (Timer / Counter) 추가
-3. DB 백업 및 로그 정리 시나리오
+2. DB 백업 및 로그 정리 시나리오
    - 로그 정리 주기
    - 백업 정책 실험
-4. Redis 캐싱 실험
+3. Redis 캐싱 실험
    - READ 시 캐싱 적용
    - Read Replica + Cache 비교 실험
-5. Spring Security 도입
+4. Spring Security 도입
    - 프론트엔드 연동 전 필수 단계
    - 무제한 호출 / 오남용 방지
    - 실험용 API 보호

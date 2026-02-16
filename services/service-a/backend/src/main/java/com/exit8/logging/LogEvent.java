@@ -18,9 +18,6 @@ public final class LogEvent {
     /** 치명적 오류로 인한 요청 실패 */
     public static final String LOAD_ERROR = "LOAD_ERROR";
 
-    /** CircuitBreaker fallback 실행 */
-    public static final String FALLBACK = "FALLBACK";
-
     /** CircuitBreaker 상태가 OPEN으로 전환됨 */
     public static final String CIRCUIT_OPEN = "CIRCUIT_OPEN";
 

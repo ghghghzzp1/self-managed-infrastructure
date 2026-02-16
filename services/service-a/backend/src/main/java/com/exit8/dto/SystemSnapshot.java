@@ -1,29 +1,19 @@
 package com.exit8.dto;
 
-import lombok.AllArgsConstructor;
-import lombok.Getter;
-import java.time.ZoneId;
 import java.time.ZonedDateTime;
 
-@Getter
-@AllArgsConstructor
-public class SystemSnapshot {
-    private ZonedDateTime timestamp;
-
+public record SystemSnapshot(
+    ZonedDateTime timestamp,
     // CircuitBreaker
-    private String circuitBreakerState;
-
+    String circuitBreakerState,
     // Hikari Pool
-    private int activeConnections;
-    private int idleConnections;
-    private int totalConnections;
-    private int waitingThreads;
-
+    int activeConnections,
+    int idleConnections,
+    int totalConnections,
+    int waitingThreads,
     // Hikari timeout counter (누적값)
-    private double hikariTimeoutCount;
-
+    double hikariTimeoutCount,
     // 실험용 평균 응답시간
-    private Long avgResponseTimeMs;
-
-    private final boolean rateLimitEnabled;
-}
+    Long avgResponseTimeMs,
+    boolean rateLimitEnabled
+) {}

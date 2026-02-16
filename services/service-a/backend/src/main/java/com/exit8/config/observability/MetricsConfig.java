@@ -2,6 +2,7 @@ package com.exit8.config.observability;
 
 import io.micrometer.core.instrument.Counter;
 import io.micrometer.core.instrument.MeterRegistry;
+import org.springframework.boot.actuate.autoconfigure.metrics.MeterRegistryCustomizer;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 
@@ -12,6 +13,13 @@ import org.springframework.context.annotation.Configuration;
  */
 @Configuration
 public class MetricsConfig {
+
+    // 모든 Micrometer 메트릭에 service=service-a-backend 자동 부여
+    @Bean
+    MeterRegistryCustomizer<MeterRegistry> metricsCommonTags() {
+        return registry -> registry.config()
+                .commonTags("service", "service-a-backend");
+    }
 
     /**
      * Rate Limit에 의해 차단된 요청 누적 카운터

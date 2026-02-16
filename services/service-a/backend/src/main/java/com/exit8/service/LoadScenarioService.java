@@ -1,5 +1,6 @@
 package com.exit8.service;
 
+import com.exit8.config.constants.CircuitNames;
 import com.exit8.domain.DummyDataRecord;
 import com.exit8.domain.LoadTestLog;
 import com.exit8.exception.ApiException;
@@ -37,7 +38,7 @@ public class LoadScenarioService {
             extraTags = {"type", "cpu"},
             histogram = true
     )
-    @CircuitBreaker(name = "testCircuit")
+    @CircuitBreaker(name = CircuitNames.TEST_CIRCUIT)
     public void generateCpuLoad(long durationMs) {
         if (durationMs <= 0 || durationMs > MAX_DURATION_MS) {
             throw new ApiException(
@@ -70,7 +71,7 @@ public class LoadScenarioService {
             extraTags = {"type", "db_read"},
             histogram = true
     )
-    @CircuitBreaker(name = "testCircuit")
+    @CircuitBreaker(name = CircuitNames.TEST_CIRCUIT)
     @Transactional(readOnly = true)
     public void simulateDbReadLoad(int repeatCount) {
         if (repeatCount <= 0 || repeatCount > MAX_REPEAT) {
@@ -94,7 +95,7 @@ public class LoadScenarioService {
             extraTags = {"type", "db_write"},
             histogram = true
     )
-    @CircuitBreaker(name = "testCircuit")
+    @CircuitBreaker(name = CircuitNames.TEST_CIRCUIT)
     public void simulateDbWriteLoad(int repeatCount) {
         if (repeatCount <= 0 || repeatCount > MAX_REPEAT) {
             throw new ApiException(
@@ -121,10 +122,6 @@ public class LoadScenarioService {
                 // → 실제 DB I/O 발생 → 커넥션 점유 시간 증가
                 // → 부하 시 Hikari 풀 고갈 유도 가능
 
-                // CircuitBreaker OPEN 만들기 테스트용
-//                if (idx == 0) {
-//                    throw new RuntimeException("fail");
-//                }
                 return null;
                 // TransactionTemplate는 반환값이 필요하므로 null 반환
                 // 예외 발생 시 자동으로 rollback 처리됨

@@ -1,5 +1,6 @@
 package com.exit8.service;
 
+import com.exit8.config.constants.CircuitNames;
 import com.exit8.dto.RateLimitToggleResponse;
 import com.exit8.dto.SystemHealthStatus;
 import com.exit8.dto.SystemSnapshot;
@@ -14,6 +15,7 @@ import io.micrometer.core.instrument.Counter;
 import io.micrometer.core.instrument.MeterRegistry;
 import io.micrometer.core.instrument.Timer;
 import lombok.RequiredArgsConstructor;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 
@@ -27,21 +29,29 @@ import java.time.ZonedDateTime;
 import java.util.concurrent.TimeUnit;
 
 @Service
-@RequiredArgsConstructor
 public class SystemHealthService {
 
-    private static final String CIRCUIT_NAME = "testCircuit";
-
     private final CircuitBreakerRegistry circuitBreakerRegistry;
-    private final DataSource dataSource;   // HikariDataSource
+    private final DataSource dataSource;
     private final MeterRegistry meterRegistry;
     private final RequestEventBuffer requestEventBuffer;
-
-    // Rate Limit 활성화 상태 (런타임 토글용) 기본값: OFF
-    private final AtomicBoolean rateLimitEnabled = new AtomicBoolean(false);
+    private final AtomicBoolean rateLimitEnabled;
 
     private static final ZoneId ZONE = ZoneId.of("Asia/Seoul");
 
+    public SystemHealthService(
+            CircuitBreakerRegistry circuitBreakerRegistry,
+            DataSource dataSource,
+            MeterRegistry meterRegistry,
+            RequestEventBuffer requestEventBuffer,
+            @Value("${rate-limit.enabled:false}") boolean initialEnabled
+    ) {
+        this.circuitBreakerRegistry = circuitBreakerRegistry;
+        this.dataSource = dataSource;
+        this.meterRegistry = meterRegistry;
+        this.requestEventBuffer = requestEventBuffer;
+        this.rateLimitEnabled = new AtomicBoolean(initialEnabled);
+    }
 
     /**
      * 기존 Health 판단 로직 (운영 상태 판정용)
@@ -50,10 +60,10 @@ public class SystemHealthService {
     public SystemHealthStatus getCurrentStatus() {
 
         CircuitBreaker circuitBreaker =
-                circuitBreakerRegistry.find(CIRCUIT_NAME)
+                circuitBreakerRegistry.find(CircuitNames.TEST_CIRCUIT)
                         .orElseThrow(() -> new ApiException(
                                 "CIRCUIT_NOT_FOUND",
-                                "circuit breaker not registered: " + CIRCUIT_NAME,
+                                "circuit breaker not registered: " + CircuitNames.TEST_CIRCUIT,
                                 HttpStatus.INTERNAL_SERVER_ERROR
                         ));
 
@@ -144,7 +154,7 @@ public class SystemHealthService {
 
         // CircuitBreaker 상태
         CircuitBreaker cb =
-                circuitBreakerRegistry.circuitBreaker(CIRCUIT_NAME);
+                circuitBreakerRegistry.circuitBreaker(CircuitNames.TEST_CIRCUIT);
 
         String cbState = cb.getState().name();
 
