@@ -69,14 +69,8 @@ public class RateLimitFilter extends OncePerRequestFilter {
         // TraceIdFilter에서 이미 생성된 trace_id 조회
         String traceId = MDC.get(TraceContext.TRACE_ID_KEY);
 
-        // 실험용 API에만 적용
+        // 테스트용 API에만 적용
         if (!request.getRequestURI().startsWith("/api/load")) {
-            filterChain.doFilter(request, response);
-            return;
-        }
-
-        // 런타임 활성화 여부 확인
-        if (!systemHealthService.isRateLimitEnabled()) {
             filterChain.doFilter(request, response);
             return;
         }
@@ -84,61 +78,69 @@ public class RateLimitFilter extends OncePerRequestFilter {
         // 실제 클라이언트 IP 추출 (Resolver 사용)
         String clientIp = clientIpResolver.resolve(request);
 
-        Bucket bucket = bucketStore.get(clientIp, this::createBucket);
-
         long start = System.currentTimeMillis();
 
-        // 토큰 소비 성공 → 요청 허용
-        if (bucket.tryConsume(1)) {
+        boolean rateLimitEnabled = systemHealthService.isRateLimitEnabled();
 
+        // RateLimit ON일 때만 토큰 검사
+        if (rateLimitEnabled) {
+
+            Bucket bucket = bucketStore.get(clientIp, this::createBucket);
+            // 토큰 부족 → 요청 차단 (429)
+            if (!bucket.tryConsume(1)) {
+
+                rateLimitBlockedCounter.increment();
+
+                log.warn(
+                        "event={} traceId={} ip={} uri={}",
+                        LogEvent.RATE_LIMITED,
+                        traceId,
+                        clientIp,
+                        request.getRequestURI()
+                );
+
+                // Filter 단계에서 즉시 429 응답을 반환하여
+                // Controller / Service 계층으로 요청이 전달되지 않도록 조기 차단
+                int statusCode = HttpStatus.TOO_MANY_REQUESTS.value();
+                response.setStatus(statusCode);
+                response.setContentType(MediaType.APPLICATION_JSON_VALUE);
+                response.setCharacterEncoding("UTF-8");
+                response.getWriter().write(
+                        """
+                        {
+                          "httpCode": %d,
+                          "data": null,
+                          "error": {
+                            "code": "RATE_LIMIT_EXCEEDED",
+                            "message": "Too many requests"
+                          }
+                        }
+                        """.formatted(statusCode)
+                );
+                response.getWriter().flush();
+
+                long duration = System.currentTimeMillis() - start;
+
+                requestEventBuffer.add(new RequestEvent(
+                        Instant.now(),
+                        traceId,
+                        clientIp,
+                        request.getMethod(),
+                        request.getRequestURI(),
+                        statusCode,
+                        LogEvent.RATE_LIMITED,
+                        duration
+                ));
+
+                return;
+            }
+            // 토큰 소비 성공 → 요청 허용
             rateLimitAllowedCounter.increment();
-
-            filterChain.doFilter(request, response);
-
-            long duration = System.currentTimeMillis() - start;
-
-            requestEventBuffer.add(new RequestEvent(
-                    Instant.now(),
-                    traceId,
-                    clientIp,
-                    request.getMethod(),
-                    request.getRequestURI(),
-                    response.getStatus(),
-                    "REQUEST_COMPLETED",
-                    duration
-            ));
-
-            return;
         }
 
-        // 토큰 부족 → 요청 차단 (429)
-        rateLimitBlockedCounter.increment();
 
-        log.warn(
-                "event={} traceId={} ip={} uri={}",
-                LogEvent.RATE_LIMITED,
-                traceId,
-                clientIp,
-                request.getRequestURI()
-        );
-
-        int statusCode = HttpStatus.TOO_MANY_REQUESTS.value();
-        response.setStatus(statusCode);
-        response.setContentType(MediaType.APPLICATION_JSON_VALUE);
-        response.setCharacterEncoding("UTF-8");
-        response.getWriter().write(
-                """
-                {
-                  "httpCode": %d,
-                  "data": null,
-                  "error": {
-                    "code": "RATE_LIMIT_EXCEEDED",
-                    "message": "Too many requests"
-                  }
-                }
-                """.formatted(statusCode)
-        );
-        response.getWriter().flush();
+        // 항상 요청 실행
+        filterChain.doFilter(request, response);
 
         long duration = System.currentTimeMillis() - start;
 
@@ -148,10 +150,11 @@ public class RateLimitFilter extends OncePerRequestFilter {
                 clientIp,
                 request.getMethod(),
                 request.getRequestURI(),
-                statusCode,
-                "RATE_LIMITED",
+                response.getStatus(),
+                LogEvent.REQUEST_COMPLETED,
                 duration
         ));
+
     }
 
     /**

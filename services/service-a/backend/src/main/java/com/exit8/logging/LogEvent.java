@@ -33,4 +33,7 @@ public final class LogEvent {
     /** Rate Limit에 의해 요청이 차단됨 */
     public static final String RATE_LIMITED = "RATE_LIMITED";
 
+    /** 정상 요청 완료 */
+    public static final String REQUEST_COMPLETED = "REQUEST_COMPLETED";
+
 }
