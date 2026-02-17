@@ -1,9 +1,9 @@
 package com.exit8.controller;
 
 import com.exit8.dto.DefaultResponse;
-import com.exit8.dto.RateLimitToggleResponse;
 import com.exit8.dto.SystemHealthStatus;
 import com.exit8.dto.SystemSnapshot;
+import com.exit8.dto.ToggleResponse;
 import com.exit8.observability.RequestEvent;
 import com.exit8.service.SystemHealthService;
 import lombok.RequiredArgsConstructor;
@@ -70,9 +70,9 @@ public class SystemHealthController {
      * - Snapshot API에서 동일 상태 확인 가능
      */
     @PostMapping("/rate-limit/toggle")
-    public ResponseEntity<DefaultResponse<RateLimitToggleResponse>> toggleRateLimit() {
+    public ResponseEntity<DefaultResponse<ToggleResponse>> toggleRateLimit() {
 
-        RateLimitToggleResponse response = systemHealthService.toggleRateLimit();
+        ToggleResponse response = systemHealthService.toggleRateLimit();
 
         return ResponseEntity.ok(
                 DefaultResponse.success(
@@ -100,6 +100,26 @@ public class SystemHealthController {
                 DefaultResponse.success(
                         HttpStatus.OK.value(),
                         events
+                )
+        );
+    }
+
+    /**
+     * Redis Cache ON/OFF 토글 API
+     *
+     * - 현재 활성화 상태를 반전
+     * - 서버 재시작 없이 동적 전환 가능
+     * - Snapshot API에서 동일 상태 확인 가능
+     */
+    @PostMapping("/redis-cache/toggle")
+    public ResponseEntity<DefaultResponse<ToggleResponse>> toggleRedisCache() {
+
+        ToggleResponse response = systemHealthService.toggleRedisCache();
+
+        return ResponseEntity.ok(
+                DefaultResponse.success(
+                        HttpStatus.OK.value(),
+                        response
                 )
         );
     }

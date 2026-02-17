@@ -1,12 +1,14 @@
 package com.exit8.service;
 
 import com.exit8.config.constants.CircuitNames;
-import com.exit8.dto.RateLimitToggleResponse;
 import com.exit8.dto.SystemHealthStatus;
 import com.exit8.dto.SystemSnapshot;
+import com.exit8.dto.ToggleResponse;
 import com.exit8.exception.ApiException;
+import com.exit8.observability.CacheMetrics;
 import com.exit8.observability.RequestEvent;
 import com.exit8.observability.RequestEventBuffer;
+import com.exit8.state.RuntimeFeatureState;
 import com.zaxxer.hikari.HikariDataSource;
 import com.zaxxer.hikari.HikariPoolMXBean;
 import io.github.resilience4j.circuitbreaker.CircuitBreaker;
@@ -15,13 +17,11 @@ import io.micrometer.core.instrument.Counter;
 import io.micrometer.core.instrument.MeterRegistry;
 import io.micrometer.core.instrument.Timer;
 import lombok.RequiredArgsConstructor;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 
 import java.util.Collection;
 import java.util.List;
-import java.util.concurrent.atomic.AtomicBoolean;
 
 import javax.sql.DataSource;
 import java.time.ZoneId;
@@ -29,29 +29,17 @@ import java.time.ZonedDateTime;
 import java.util.concurrent.TimeUnit;
 
 @Service
+@RequiredArgsConstructor
 public class SystemHealthService {
 
     private final CircuitBreakerRegistry circuitBreakerRegistry;
     private final DataSource dataSource;
     private final MeterRegistry meterRegistry;
     private final RequestEventBuffer requestEventBuffer;
-    private final AtomicBoolean rateLimitEnabled;
+    private final RuntimeFeatureState runtimeFeatureState;
+    private final CacheMetrics cacheMetrics;
 
     private static final ZoneId ZONE = ZoneId.of("Asia/Seoul");
-
-    public SystemHealthService(
-            CircuitBreakerRegistry circuitBreakerRegistry,
-            DataSource dataSource,
-            MeterRegistry meterRegistry,
-            RequestEventBuffer requestEventBuffer,
-            @Value("${rate-limit.enabled:false}") boolean initialEnabled
-    ) {
-        this.circuitBreakerRegistry = circuitBreakerRegistry;
-        this.dataSource = dataSource;
-        this.meterRegistry = meterRegistry;
-        this.requestEventBuffer = requestEventBuffer;
-        this.rateLimitEnabled = new AtomicBoolean(initialEnabled);
-    }
 
     /**
      * 기존 Health 판단 로직 (운영 상태 판정용)
@@ -185,7 +173,19 @@ public class SystemHealthService {
             timeoutCount = timeoutCounter.count();
         }
 
-        // 4전체 HTTP 평균 응답 시간
+        // Redis Cache Hit Ratio 계산
+        double hitCount = cacheMetrics.getHitCount();
+        double missCount = cacheMetrics.getMissCount();
+
+        Double cacheHitRatio = null;
+
+        double totalCache = hitCount + missCount;
+
+        if (totalCache > 0) {
+            cacheHitRatio = hitCount / totalCache;
+        }
+
+        // 전체 HTTP 평균 응답 시간
         Collection<Timer> timers =
                 meterRegistry.find("http.server.requests").timers();
 
@@ -210,35 +210,55 @@ public class SystemHealthService {
                 waiting,
                 timeoutCount,
                 avgResponseTimeMs,
-                rateLimitEnabled.get()
+                runtimeFeatureState.isRateLimitEnabled(),
+                runtimeFeatureState.isRedisCacheEnabled(),
+                cacheHitRatio
         );
     }
 
     /**
      * Rate Limit 상태를 ON ↔ OFF로 전환
      */
-    public RateLimitToggleResponse toggleRateLimit() {
-        boolean prev, next;
-
-        // CAS(Compare-And-Swap) 방식을 유지하여 Thread-safe하게 상태 변경
-        do {
-            prev = rateLimitEnabled.get();
-            next = !prev;
-        } while (!rateLimitEnabled.compareAndSet(prev, next));
+    public ToggleResponse toggleRateLimit() {
+        boolean prev = runtimeFeatureState.isRateLimitEnabled();
+        runtimeFeatureState.toggleRateLimit();
+        boolean next = runtimeFeatureState.isRateLimitEnabled();
 
         // 상태 변화를 문자열로 생성 (예: "OFF -> ON" 또는 "ON -> OFF")
         String fromStatus = prev ? "ON" : "OFF";
         String toStatus = next ? "ON" : "OFF";
         String statusMessage = String.format("%s -> %s", fromStatus, toStatus);
 
-        return new RateLimitToggleResponse(next, statusMessage);
+        return new ToggleResponse(next, statusMessage);
     }
 
     /**
      * 현재 Rate Limit 활성화 여부 조회
      */
     public boolean isRateLimitEnabled() {
-        return rateLimitEnabled.get();
+        return runtimeFeatureState.isRateLimitEnabled();
+    }
+
+    /**
+     * Redis 상태를 ON ↔ OFF로 전환
+     */
+    public ToggleResponse toggleRedisCache() {
+        boolean prev = runtimeFeatureState.isRedisCacheEnabled();
+        runtimeFeatureState.toggleRedisCache();
+        boolean next = runtimeFeatureState.isRedisCacheEnabled();
+
+        String fromStatus = prev ? "ON" : "OFF";
+        String toStatus = next ? "ON" : "OFF";
+        String statusMessage = String.format("%s -> %s", fromStatus, toStatus);
+
+        return new ToggleResponse(next, statusMessage);
+    }
+
+    /**
+     * 현재 Redis 활성화 여부 조회
+     */
+    public boolean isRedisCacheEnabled() {
+        return runtimeFeatureState.isRedisCacheEnabled();
     }
 
     /**
@@ -247,6 +267,5 @@ public class SystemHealthService {
     public List<RequestEvent> getRecentRequests(int limit) {
         return requestEventBuffer.getRecent(limit);
     }
-
 
 }
