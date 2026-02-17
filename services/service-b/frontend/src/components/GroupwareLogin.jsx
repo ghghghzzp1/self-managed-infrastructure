@@ -23,11 +23,51 @@ function GroupwareLogin() {
   const navigate = useNavigate();
   const [id, setId] = useState('');
   const [password, setPassword] = useState('');
+  const [isLoading, setIsLoading] = useState(false);
+  const [errorMessage, setErrorMessage] = useState('');
 
-  const handleLogin = (e) => {
+  const handleLogin = async (e) => {
     e.preventDefault();
-    // API 연결 전 - 로그인 성공 시 홈으로 이동 (UI만)
-    navigate('/home');
+    setErrorMessage('');
+
+    const username = id.trim();
+    if (!username || !password) {
+      setErrorMessage('아이디와 비밀번호를 입력해주세요.');
+      return;
+    }
+
+    setIsLoading(true);
+    try {
+      const res = await fetch('/api/v1/auth/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username, password }),
+      });
+
+      const payload = await res.json().catch(() => null);
+
+      if (!res.ok) {
+        const msg =
+          payload?.error?.message ||
+          (res.status === 401 ? '아이디 또는 비밀번호가 올바르지 않습니다.' : '로그인에 실패했습니다.');
+        setErrorMessage(msg);
+        return;
+      }
+
+      // 기대 응답 형태: { success: 200, data: { id, username, name, email, is_admin }, error: null }
+      const user = payload?.data ?? null;
+      if (!user?.id) {
+        setErrorMessage('로그인 응답을 처리할 수 없습니다.');
+        return;
+      }
+
+      localStorage.setItem('service-b.user', JSON.stringify(user));
+      navigate('/home');
+    } catch (err) {
+      setErrorMessage('네트워크 오류로 로그인에 실패했습니다.');
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   const handleSignUp = () => {
@@ -60,8 +100,8 @@ function GroupwareLogin() {
             onChange={(e) => setPassword(e.target.value)}
             autoComplete="current-password"
           />
-          <button type="submit" className="btn btn-primary">
-            로그인
+          <button type="submit" className="btn btn-primary" disabled={isLoading}>
+            {isLoading ? '로그인 중...' : '로그인'}
           </button>
         </form>
 
@@ -75,7 +115,13 @@ function GroupwareLogin() {
           </button>
         </div>
 
-        <p className="login-note">UI only - API not connected.</p>
+        {errorMessage ? (
+          <p className="login-note" role="alert">
+            {errorMessage}
+          </p>
+        ) : (
+          <p className="login-note">로그인 API 연결 완료</p>
+        )}
       </div>
     </div>
   );
