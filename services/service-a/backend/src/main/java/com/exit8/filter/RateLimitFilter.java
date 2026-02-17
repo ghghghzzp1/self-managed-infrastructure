@@ -1,54 +1,63 @@
 package com.exit8.filter;
 
 import com.exit8.logging.LogEvent;
+import com.exit8.logging.TraceContext;
+import com.exit8.observability.RequestEvent;
+import com.exit8.observability.RequestEventBuffer;
+import com.exit8.service.SystemHealthService;
 import io.github.bucket4j.Bandwidth;
 import io.github.bucket4j.Bucket;
 import io.github.bucket4j.Refill;
+import io.micrometer.core.instrument.Counter;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
+import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.slf4j.MDC;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.web.filter.OncePerRequestFilter;
 import com.github.benmanes.caffeine.cache.Cache;
 import com.github.benmanes.caffeine.cache.Caffeine;
 
-import java.util.concurrent.TimeUnit;
-
-
 import java.io.IOException;
 import java.time.Duration;
-
+import java.time.Instant;
+import java.util.concurrent.TimeUnit;
 
 @Slf4j
+@RequiredArgsConstructor
 public class RateLimitFilter extends OncePerRequestFilter {
+
     /**
      * IP 기반 Rate Limit Filter
      *
-     * - 요청 초기에 실행되어 과도한 트래픽을 차단
-     * - Bucket4j를 사용한 Token Bucket 방식
-     * - CircuitBreaker 이전 단계에서 동작
+     * - TraceIdFilter 이후 실행 (trace_id 존재 보장)
+     * - /api/load 경로에만 적용
+     * - Bucket4j Token Bucket 방식 사용
+     * - CircuitBreaker 이전 1차 방어 레이어
+     * - 런타임 ON/OFF 가능
+     * - 차단/허용 이벤트를 메트릭 + RequestEventBuffer 기록
      */
 
     private final ClientIpResolver clientIpResolver;
-    private final boolean rateLimitEnabled;
+    private final SystemHealthService systemHealthService;
+    private final RequestEventBuffer requestEventBuffer;
+    private final Counter rateLimitBlockedCounter;
+    private final Counter rateLimitAllowedCounter;
 
-    // IP별 Bucket 저장소 (TTL + 최대 크기 제한)
+    /**
+     * IP별 Bucket 저장소
+     * - 10분간 미사용 시 제거
+     * - 최대 10,000 IP 유지
+     */
     private final Cache<String, Bucket> bucketStore =
             Caffeine.newBuilder()
-                    .expireAfterAccess(10, TimeUnit.MINUTES)   // 10분간 요청 없으면 제거
-                    .maximumSize(10_000)                       // 최대 1만 IP 제한
+                    .expireAfterAccess(10, TimeUnit.MINUTES)
+                    .maximumSize(10_000)
                     .build();
-
-    public RateLimitFilter(
-            ClientIpResolver clientIpResolver,
-            boolean rateLimitEnabled
-    ) {
-        this.clientIpResolver = clientIpResolver;
-        this.rateLimitEnabled = rateLimitEnabled;
-    }
 
     @Override
     protected void doFilterInternal(
@@ -56,68 +65,108 @@ public class RateLimitFilter extends OncePerRequestFilter {
             HttpServletResponse response,
             FilterChain filterChain
     ) throws ServletException, IOException {
-        // 필터 활성화 여부 확인 (설정값에 따른 동적 제어)
-        if (!rateLimitEnabled) {
-            filterChain.doFilter(request, response);
-            return;
-        }
 
-        // 특정 API(/api/load)에만 제한을 적용하여 시스템 안정성 확보
+        // TraceIdFilter에서 이미 생성된 trace_id 조회
+        String traceId = MDC.get(TraceContext.TRACE_ID_KEY);
+
+        // 테스트용 API에만 적용
         if (!request.getRequestURI().startsWith("/api/load")) {
             filterChain.doFilter(request, response);
             return;
         }
 
-        // ClientIpResolver를 사용하여 요청자의 IP 식별
+        // 실제 클라이언트 IP 추출 (Resolver 사용)
         String clientIp = clientIpResolver.resolve(request);
-        Bucket bucket = bucketStore.get(clientIp, this::createBucket);
 
-        // 토큰 소비 시도 (Rate Limit 체크)
-        if (bucket.tryConsume(1)) {
-            filterChain.doFilter(request, response);
-            return;
+        long start = System.currentTimeMillis();
+
+        boolean rateLimitEnabled = systemHealthService.isRateLimitEnabled();
+
+        // RateLimit ON일 때만 토큰 검사
+        if (rateLimitEnabled) {
+
+            Bucket bucket = bucketStore.get(clientIp, this::createBucket);
+            // 토큰 부족 → 요청 차단 (429)
+            if (!bucket.tryConsume(1)) {
+
+                rateLimitBlockedCounter.increment();
+
+                log.warn(
+                        "event={} traceId={} ip={} uri={}",
+                        LogEvent.RATE_LIMITED,
+                        traceId,
+                        clientIp,
+                        request.getRequestURI()
+                );
+
+                // Filter 단계에서 즉시 429 응답을 반환하여
+                // Controller / Service 계층으로 요청이 전달되지 않도록 조기 차단
+                int statusCode = HttpStatus.TOO_MANY_REQUESTS.value();
+                response.setStatus(statusCode);
+                response.setContentType(MediaType.APPLICATION_JSON_VALUE);
+                response.setCharacterEncoding("UTF-8");
+                response.getWriter().write(
+                        """
+                        {
+                          "httpCode": %d,
+                          "data": null,
+                          "error": {
+                            "code": "RATE_LIMIT_EXCEEDED",
+                            "message": "Too many requests"
+                          }
+                        }
+                        """.formatted(statusCode)
+                );
+                response.getWriter().flush();
+
+                long duration = System.currentTimeMillis() - start;
+
+                requestEventBuffer.add(new RequestEvent(
+                        Instant.now(),
+                        traceId,
+                        clientIp,
+                        request.getMethod(),
+                        request.getRequestURI(),
+                        statusCode,
+                        LogEvent.RATE_LIMITED,
+                        duration
+                ));
+
+                return;
+            }
+            // 토큰 소비 성공 → 요청 허용
+            rateLimitAllowedCounter.increment();
         }
 
-        // 제한 초과 시 차단 및 429 에러 응답
-        log.warn(
-                "event={} ip={} uri={}",
-                LogEvent.RATE_LIMIT_REJECTED,
-                clientIp,
-                request.getRequestURI()
-        );
 
-        response.setStatus(HttpStatus.TOO_MANY_REQUESTS.value());
-        response.setContentType(MediaType.APPLICATION_JSON_VALUE);
-        response.getWriter().write(
-                """
-                {
-                  "httpCode": 429,
-                  "data": null,
-                  "error": {
-                    "code": "RATE_LIMIT_EXCEEDED",
-                    "message": "Too many requests"
-                  }
-                }
-                """
-        );
-        response.getWriter().flush();
+        // 항상 요청 실행
+        filterChain.doFilter(request, response);
+
+        long duration = System.currentTimeMillis() - start;
+
+        requestEventBuffer.add(new RequestEvent(
+                Instant.now(),
+                traceId,
+                clientIp,
+                request.getMethod(),
+                request.getRequestURI(),
+                response.getStatus(),
+                LogEvent.REQUEST_COMPLETED,
+                duration
+        ));
 
     }
 
     /**
-     * IP당 Rate Limit 정책
+     * IP별 Rate Limit 정책
      *
-     * - 초당 5 req
-     * - burst 10 허용
-     * 실험용 Rate Limit (Normal-TG 생존)
-     *
-     * - 초당 20 req
-     * - burst 40 허용
+     * - burst: 40
+     * - refill: 초당 20 토큰
      */
     private Bucket createBucket(String ip) {
         Bandwidth limit = Bandwidth.classic(
-                40, // // 최대 버스트(보관 가능한 토큰)
-                Refill.intervally(20, Duration.ofSeconds(1)) // 초당 충전되는 토큰 수
+                40,
+                Refill.intervally(20, Duration.ofSeconds(1))
         );
 
         return Bucket.builder()

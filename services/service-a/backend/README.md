@@ -65,7 +65,7 @@ services/service-a/backend/
 │   │   ├── LoadScenarioController.java
 │   │   └── CircuitBreakerTestController.java
 │   │
-│   ├── service/           # 부하 · 실험 · 상태 판단
+│   ├── service/           # 시스템 동작 로직 (부하 생성 · 차단 제어 · 상태 계산)
 │   │   ├── SystemHealthService.java
 │   │   ├── LoadScenarioService.java
 │   │   └── CircuitBreakerTestService.java
@@ -98,8 +98,12 @@ services/service-a/backend/
 │   ├── logging/           # AOP 기반 관측 로깅
 │   │   ├── LogAspect.java                  # LOAD_START / END / FAIL 트리거
 │   │   ├── LogLevelPolicy.java             # INFO / WARN / ERROR 판단
-│   │   ├── LogEvent.java                   # 이벤트 상수 (LOAD_START 등)
+│   │   ├── LogEvent.java                   # 이벤트 도메인 (LOAD_START 등)
 │   │   └── TraceContext.java               # MDC 기반 trace_id 접근 전용
+│   │
+│   ├── observability/     # 실시간 관측 이벤트 및 메모리 버퍼 (프론트 대시보드용)
+│   │   ├── RequestEvent.java
+│   │   └── RequestEventBuffer.java
 │   │
 │   └── config/
 │       ├── datasource/                     # DB 설정
@@ -107,9 +111,11 @@ services/service-a/backend/
 │       ├── redis/                          # edis 설정
 │       │   └── RedisConfig.java
 │       ├── observability/                  # Metrics / tracing 설정
-│       │   └── MetricsConfig.java
+│       │   └── MetricsConfig.java 
+│       ├── constants/
+│       │   └── CircuitNames.java
 │       └── filter/                         # Filter 설정
-│           └── FilterOrderConfig.java      # 순서만 제어
+│           └── FilterOrderConfig.java      # 순서 제어
 │
 └── src/main/resources/
     ├── application.yml
@@ -170,12 +176,23 @@ service-a-backend:spring:health:status
 ### Load & Experiment APIs
 - 시스템에 의도적 부하를 가하는 API
 - 모든 호출은 상태 변화를 유발함
-- side-effect 존재 (DB/CPU/메트릭/서킷 상태 변화 발생)
+- side-effect 존재 
+  - CPU 사용률 변화
+  - DB Connection Pool 점유
+  - CircuitBreaker 상태 변화
+  - Metric 증가
+  - 로그 이벤트 발생
+
+> 실험 목적의 API이며 운영 read-only API와 명확히 구분한다.
 
 ### Health & Observability APIs
 - 시스템 현재 상태 조회 API
-- UI / Prometheus / 운영 연계
-- side-effect 없음 (상태 조회 전용, read-only)
+- UI / Prometheus / 운영 모니터링 연계
+- 기본적으로 read-only
+- 비즈니스 상태를 변경하지 않음
+- 단, 예외적으로:
+  - `/api/system/rate-limit/toggle` 은 실험 제어용 관리 API이며 상태를 변경한다.
+  - 운영 Health API와는 성격이 다름
 
 ---
 
@@ -185,31 +202,69 @@ service-a-backend:spring:health:status
 - Controller는 얇게 유지 → 요청 파라미터 바인딩 + Service 호출만 담당
 - 모든 검증·제어는 Service 담당
 - checked exception 외부 전파 ❌
+  - Service 내부에서 정제 후 ApiException 변환
 - 부하 시나리오 = Service 책임
+- 관측 데이터 접근(RequestEventBuffer 등)도 반드시 Service를 통해 접근
 
 <br>
 
 ### UI ↔ API ↔ Service 정합성 원칙
 - UI 버튼 · API 엔드포인트 · Service 메서드가 1:1로 매핑
 
-| UI 버튼     | API                                         | Service                                                               |
-| --------- | ------------------------------------------- | --------------------------------------------------------------------- |
-| CPU 부하 시작 | `/api/load/cpu`                             | `LoadScenarioService.generateCpuLoad()`                               |
-| DB 부하 시작  | `/api/load/db-read`<br>`/api/load/db-write` | `LoadScenarioService.simulateDbReadLoad()`<br>`simulateDbWriteLoad()` |
-| 상태 표시     | `/api/system/health`                        | `SystemHealthService.getCurrentStatus()`                              |
-| 차단 테스트    | `/api/circuit/test`                         | `CircuitBreakerTestService.callWithDelay()`                           |
+| UI 버튼            | API                                         | Service                                           |
+| ---------------- | ------------------------------------------- | ------------------------------------------------- |
+| CPU 부하 시작        | `/api/load/cpu`                             | `LoadScenarioService.generateCpuLoad()`           |
+| DB 부하 시작         | `/api/load/db-read`<br>`/api/load/db-write` | `simulateDbReadLoad()`<br>`simulateDbWriteLoad()` |
+| 상태 표시            | `/api/system/health`                        | `SystemHealthService.getCurrentStatus()`          |
+| Snapshot 표시      | `/api/system/snapshot`                      | `SystemHealthService.getSnapshot()`               |
+| 최근 요청 피드         | `/api/system/recent-requests`               | `SystemHealthService.getRecentRequests()`         |
+| RateLimit ON/OFF | `/api/system/rate-limit/toggle`             | `SystemHealthService.toggleRateLimit()`           |
+| 차단 테스트           | `/api/circuit/test`                         | `CircuitBreakerTestService.callWithDelay()`       |
+
 
 <br>
 
 ### 규칙 강제 이유
 1. 관측 가능성(Observability)
-    - 로그, 메트릭, 트레이스가 Service 단위로 정확히 분리
+    - 로그, 메트릭, 이벤트가 Service 단위로 정확히 분리됨
+    - AOP 로깅과 완벽하게 정렬됨
+    - 요청 흐름 추적이 명확해짐
 2. 부하 시나리오 단순화
     - “어떤 버튼이 어떤 부하를 만들었는지” 즉시 추적 가능
+    - 실험 결과 재현성 확보
 3. UI ↔ 백엔드 커뮤니케이션 명확화
-    - UI 팀 / 인프라 팀 / 백엔드 팀 간 오해 제거
+    - API 계약이 Service 단위로 고정됨
+    - 프론트/백엔드/인프라 간 오해 제거
 4. AOP 로깅 구조와 완벽하게 호환
-    - Service.*(..) 기준으로 로깅 / 시간 측정 / 실패 감지 가능
+    - Service.*(..) 기준으로 로깅 (실행 시간 측정, 성공/실패 판단, 이벤트 타입 분류)
+    - Filter / Infra 레이어는 별도 관측 지점으로 분리됨
+
+### Observability 현재 구조
+```
+[Filter Layer]
+  ├─ TraceIdFilter
+  ├─ RateLimitFilter  ← 이벤트 발생 지점 1
+
+[Service Layer]
+  ├─ LoadScenarioService
+  ├─ SystemHealthService
+  ├─ CircuitBreakerTestService
+
+[Resilience Layer]
+  ├─ Resilience4j CircuitBreaker (AOP Proxy)   ← 이벤트 발생 지점 2
+
+[Exception Layer]
+  ├─ GlobalExceptionHandler  ← CIRCUIT_OPEN 이벤트 기록 지점
+  
+[Observability Layer]
+  ├─ Micrometer Counter / Timer
+  ├─ RequestEventBuffer (in-memory ring buffer)
+
+[API Layer]
+  ├─ SystemSnapshot API
+  ├─ RecentRequests API
+  └─ RateLimit Toggle API
+```
 
 ---
 
@@ -259,12 +314,12 @@ service-a-backend:spring:health:status
 ```
 UP
 - CircuitBreaker 상태: CLOSED
-- DB 커넥션 풀: 정상 (Hikari validation warning 없음)
+- Hikari Pool waitingThreads == 0
 
 DEGRADED
 - CircuitBreaker 상태: HALF_OPEN
-- 또는 DB 커넥션 풀 경고 발생
-  (HikariPool validation warning, 응답 지연 증가 등)
+- Hikari Pool waitingThreads > 0
+- idle == 0 && waiting > 0 (풀 고갈 조짐)
 
 DOWN
 - CircuitBreaker 상태: OPEN
@@ -303,14 +358,13 @@ DOWN
 
 ### CircuitBreakerTestController
 - CircuitBreaker가 언제 OPEN 되는지 눈으로 확인
-- Fallback 동작 검증
 
 #### 동작 방식
 1. 내부에서 의도적으로 timeout 발생
 2. Resilience4j가 실패 누적
 3. OPEN 전환
-4. Fallback 호출
-5. WARN 로그 + 503 응답
+4. CallNotPermittedException 발생
+5. GlobalExceptionHandler에서 503 반환
 
 ---
 
@@ -319,10 +373,15 @@ DOWN
 ### RateLimit
 - IP 기반 1차 방어 레이어
 - 반복적 부하를 차단하고 차단 이벤트 기록
+- application.yml 설정 기반으로 초기 상태 결정
+  - 서버 재시작 시에는 application.yml 설정 값으로 초기화
+- 런타임 toggle API를 통해 변경 가능
 
 ### CircuitBreaker
 - 2차 방어 레이어
 - 내부 임계치 초과 시 OPEN 상태로 전환하여 시스템 보호
+- OPEN 상태에서는 CallNotPermittedException이 즉시 발생
+  - 해당 예외는 GlobalExceptionHandler에서 503으로 변환
 
 ### Prometheus 메트릭 노출
 - Actuator + Micrometer 기반 메트릭 수집
@@ -383,14 +442,17 @@ DOWN
 - 로그 메시지에 포함될 이벤트 타입 상수 정의
 - 이벤트 기준으로 로그 집계 및 분석 가능
 
-  | Event               | 의미                       |
-  | ------------------- | ------------------------ |
-  | LOAD_START          | Service 실행 시작            |
-  | LOAD_END            | 정상 종료                    |
-  | LOAD_FAIL           | 비치명적 실패 (재시도 / fallback) |
-  | LOAD_ERROR          | 치명적 실패                   |
-  | CIRCUIT_OPEN        | CircuitBreaker OPEN      |
-  | UNHANDLED_EXCEPTION | AOP 밖 예외                 |
+  | Event               | 의미                  |
+  | ------------------- |---------------------|
+  | LOAD_START          | Service 실행 시작       |
+  | LOAD_END            | 정상 종료               |
+  | LOAD_FAIL           | 비치명적 실패             |
+  | LOAD_ERROR          | 치명적 실패              |
+  | CIRCUIT_OPEN        | CircuitBreaker OPEN |
+  | UNHANDLED_EXCEPTION | AOP 밖 예외            |
+  | RATE_LIMITED        | RateLimit에 의해 요청 차단 |
+  | BUSINESS_EXCEPTION  | ApiException 발생 (비즈니스 예외) |
+
 
 <br>
 
@@ -401,19 +463,20 @@ DOWN
 
 <br>
 
-#### RateLimitFilter (앞단 차단 로그)
-- Rate Limit에 의해 차단된 요청은 Service / AOP 흐름에 진입하지 않는다.
-- 따라서 trace_id를 생성하지 않으며, 요청 단위 추적 대상에 포함하지 않는다.
-- Rate Limit 로그는 “처리되지 않은 요청의 통계적 관측” 목적의 인프라 로그로만 기록한다.
-- Rate Limit은 실험 단계별로 ON/OFF 한다
-- 초기 실험은 Rate Limit ❌ 상태에서 진행
-- 이후 동일 시나리오로 Rate Limit 비교
+#### RateLimitFilter
+- TraceIdFilter 이후 실행
+- 차단 요청도 trace_id 포함
+- Service/AOP로 진입하지 않음
+- 관측 이벤트 및 메트릭은 기록됨
+
 ```
 Request
-  → RateLimitFilter   ← 여기서 차단
-    → TraceIdFilter   (아직 안 탐)
-      → Controller
-        → Service
+  → TraceIdFilter
+      → trace_id 생성
+  → RateLimitFilter
+      → 차단/허용 판단
+  → Controller
+    → Service
 ```
 
 <br>
@@ -543,7 +606,6 @@ management:
 1. Resilience4j 기반 차단 시나리오
    - CircuitBreaker 설정 완료 (testCircuit)
    - OPEN / HALF_OPEN / CLOSED 상태 전이 확인
-   - Fallback 메시지 고정
 2. 부하 테스트 시나리오 구현
    - CPU busy-loop 기반 부하 (/api/load/cpu)
    - DB READ 반복 부하 (/api/load/db-read)
@@ -586,30 +648,33 @@ management:
     - 부하 유발 API 구현
     - JMeter 연계
     - 동시 사용자 증가에 따른 DB 커넥션 풀 고갈 시 CircuitBreaker OPEN 시점 분석
-        
+10.Prometheus 메트릭 확장
+   - Custom Metrics
+     - rate_limit_blocked_total
+     - rate_limit_allowed_total
+   - Built-in Metrics
+     - resilience4j.circuitbreaker.state
+     - hikaricp.connections.*
+     - http.server.requests
+    
 <br>
 
 ### ⏳ 아직 진행하지 않은 항목
 1. `spring_logs` 테이블 실제 연동
    - 현재는 Logback / 콘솔 중심
    - DB 로그 저장은 구조(AOP, 정책, 도메인) 만 설계된 상태
+   - spring_logs 테이블 및 도메인/Repository는 존재
+   - 실제 저장 로직(LogAspect 연계)은 아직 미적용
    - 향후:
      - `LogAspect → SystemLog` 저장
      - 배치 기반 백업 후 truncate 전략 적용
-2. Prometheus 메트릭 확장
-   - 현재: Actuator 기본 메트릭 + 일부 커스텀
-   - 미완:
-     - HTTP 요청 수 / 응답 시간 세분화
-     - CircuitBreaker 상태 메트릭 명시적 노출
-   - 추후:
-     - Custom Meter (Timer / Counter) 추가
-3. DB 백업 및 로그 정리 시나리오
+2. DB 백업 및 로그 정리 시나리오
    - 로그 정리 주기
    - 백업 정책 실험
-4. Redis 캐싱 실험
+3. Redis 캐싱 실험
    - READ 시 캐싱 적용
    - Read Replica + Cache 비교 실험
-5. Spring Security 도입
+4. Spring Security 도입
    - 프론트엔드 연동 전 필수 단계
    - 무제한 호출 / 오남용 방지
    - 실험용 API 보호

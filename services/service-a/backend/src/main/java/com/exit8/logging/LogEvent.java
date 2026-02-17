@@ -18,9 +18,6 @@ public final class LogEvent {
     /** 치명적 오류로 인한 요청 실패 */
     public static final String LOAD_ERROR = "LOAD_ERROR";
 
-    /** CircuitBreaker fallback 실행 */
-    public static final String FALLBACK = "FALLBACK";
-
     /** CircuitBreaker 상태가 OPEN으로 전환됨 */
     public static final String CIRCUIT_OPEN = "CIRCUIT_OPEN";
 
@@ -31,6 +28,9 @@ public final class LogEvent {
     public static final String UNHANDLED_EXCEPTION = "UNHANDLED_EXCEPTION";
 
     /** Rate Limit에 의해 요청이 차단됨 */
-    public static final String RATE_LIMIT_REJECTED = "RATE_LIMIT_REJECTED";
+    public static final String RATE_LIMITED = "RATE_LIMITED";
+
+    /** 정상 요청 완료 */
+    public static final String REQUEST_COMPLETED = "REQUEST_COMPLETED";
 
 }
