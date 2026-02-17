@@ -18,6 +18,15 @@ spring:
       validation-timeout: 1000 # 커넥션 검증 시 최대 1초까지 대기
       leak-detection-threshold: 10000 # 10초 이상 커넥션을 점유하면 경고 (현재 발생 중인 에러 방지)
 
+  data:
+    redis:
+      timeout: 1000ms
+      lettuce:
+        pool:
+          max-active: 55   # Redis 동시 연결 최대 수
+          max-idle: 10     # 유휴 연결 최대 유지 수
+          min-idle: 2      # 최소 유휴 연결 유지 수
+
   # Vault 설정을 최우선으로 가져오도록 명시
   config:
     import: "optional:vault://"
@@ -46,6 +55,8 @@ management:
   health:
     circuitbreakers:
       enabled: true # 서킷 브레이커 상태를 /actuator/health에 포함
+    redis:
+      enabled: true
   endpoints:
     web:
       exposure:
@@ -59,18 +70,15 @@ resilience4j.circuitbreaker:
     default: # 공통 설정
       # 최근 호출 기준 설정
       sliding-window-type: COUNT_BASED
-      sliding-window-size: 20 # 최근 호출 개수
-      minimum-number-of-calls: 20 # 상태 판단을 시작하기 위한 최소 호출 수
-      # 실패율 기준
+      sliding-window-size: 20
+      minimum-number-of-calls: 20
       failure-rate-threshold: 50
   instances:
     testCircuit:
       baseConfig: default
       register-health-indicator: true
-      # 느린 호출 기준 (ms)
       slow-call-duration-threshold: 2000
       slow-call-rate-threshold: 50
-      # OPEN 상태 유지 시간
       wait-duration-in-open-state: 10s
       # HALF_OPEN 상태에서 허용 호출 수
       permitted-number-of-calls-in-half-open-state: 3
@@ -83,3 +91,7 @@ resilience4j.circuitbreaker:
 # Rate Limit 적용
 rate-limit:
   enabled: ${RATE_LIMIT_ENABLED:false} # 환경변수로 조절 가능하게 설정
+
+# Redis 적용
+redis-cache:
+  enabled: ${REDIS_CACHE_ENABLED:false}

@@ -34,4 +34,11 @@ public class LoadScenarioController {
         loadScenarioService.simulateDbWriteLoad(repeatCount);
         return DefaultResponse.success(HttpStatus.OK.value());
     }
+
+    // Warm-up 실행
+    @PostMapping("/redis/warmup")
+    public DefaultResponse<Void> warmup() {
+        loadScenarioService.simulateDbReadLoad(500);
+        return DefaultResponse.success(HttpStatus.OK.value());
+    }
 }
