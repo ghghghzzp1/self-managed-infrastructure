@@ -38,10 +38,11 @@ function SignUp() {
       const data = await res.json().catch(() => null);
 
       if (!res.ok) {
-        const msg =
+        const rawMsg =
           data?.message ||
           data?.error?.message ||
           (res.status === 400 ? '회원가입에 실패했습니다. 입력값을 확인해주세요.' : '회원가입에 실패했습니다.');
+        const msg = rawMsg === 'Username exists' ? '해당 아이디가 이미 사용 중입니다.' : rawMsg;
         setErrorMessage(msg);
         return;
       }
