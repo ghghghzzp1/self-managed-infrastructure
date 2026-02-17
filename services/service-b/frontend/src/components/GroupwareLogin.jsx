@@ -32,7 +32,7 @@ function GroupwareLogin() {
 
     const username = id.trim();
     if (!username || !password) {
-      setErrorMessage('아이디와 비밀번호를 입력해주세요.');
+      setErrorMessage('아이디와 비밀번호를 모두 입력해주세요.');
       return;
     }
 
@@ -47,10 +47,11 @@ function GroupwareLogin() {
       const payload = await res.json().catch(() => null);
 
       if (!res.ok) {
-        const msg =
-          payload?.error?.message ||
-          (res.status === 401 ? '아이디 또는 비밀번호가 올바르지 않습니다.' : '로그인에 실패했습니다.');
-        setErrorMessage(msg);
+        const backendMessage = payload?.error?.message;
+        const isInvalidCredentials =
+          res.status === 401 || backendMessage === 'Invalid credentials' || payload?.error?.code === 'AUTH_FAILED';
+
+        setErrorMessage(isInvalidCredentials ? '로그인 정보가 일치하지 않습니다.' : '로그인에 실패했습니다.');
         return;
       }
 
@@ -116,12 +117,10 @@ function GroupwareLogin() {
         </div>
 
         {errorMessage ? (
-          <p className="login-note" role="alert">
+          <p className="login-note is-error" role="alert">
             {errorMessage}
           </p>
-        ) : (
-          <p className="login-note">로그인 API 연결 완료</p>
-        )}
+        ) : null}
       </div>
     </div>
   );

@@ -97,3 +97,7 @@
   font-size: 0.8rem;
   color: #9ca3af;
 }
+
+.signup-page .page-note.is-error {
+  color: #dc2626;
+}

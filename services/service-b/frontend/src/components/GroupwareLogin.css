@@ -117,3 +117,7 @@
   font-size: 0.8rem;
   color: #9ca3af;
 }
+
+.login-note.is-error {
+  color: #dc2626;
+}

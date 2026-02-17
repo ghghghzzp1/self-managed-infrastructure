@@ -46,7 +46,11 @@
 .myinfo-page .myinfo-hint {
   margin-top: 1rem;
   font-size: 0.8rem;
-  color: #9ca3af !important;
+  color: #9ca3af;
+}
+
+.myinfo-page .myinfo-hint.is-error {
+  color: #dc2626;
 }
 
 .myinfo-page .page-actions {

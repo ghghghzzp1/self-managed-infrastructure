@@ -10,12 +10,10 @@ function SignUp() {
   const [email, setEmail] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState('');
-  const [successMessage, setSuccessMessage] = useState('');
 
   const handleSubmit = async (e) => {
     e.preventDefault();
     setErrorMessage('');
-    setSuccessMessage('');
 
     const payload = {
       username: username.trim(),
@@ -49,8 +47,6 @@ function SignUp() {
       }
 
       // 기대 응답 형태: { success: 201, data: { username, message }, error: null }
-      const msg = data?.data?.message || '회원가입이 완료되었습니다. 로그인해주세요.';
-      setSuccessMessage(msg);
       // 성공 시 로그인 화면으로 이동
       navigate('/');
     } catch (err) {
@@ -103,7 +99,7 @@ function SignUp() {
             onChange={(e) => setEmail(e.target.value)}
             autoComplete="email"
           />
-          <button type="submit" className="btn btn-primary">
+          <button type="submit" className="btn btn-primary" disabled={isLoading}>
             {isLoading ? '처리 중...' : '회원가입'}
           </button>
         </form>
@@ -119,14 +115,10 @@ function SignUp() {
         </div>
 
         {errorMessage ? (
-          <p className="page-note" role="alert">
+          <p className="page-note is-error" role="alert">
             {errorMessage}
           </p>
-        ) : successMessage ? (
-          <p className="page-note">{successMessage}</p>
-        ) : (
-          <p className="page-note">회원가입 API 연결 완료</p>
-        )}
+        ) : null}
       </div>
     </div>
   );

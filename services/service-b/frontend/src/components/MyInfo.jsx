@@ -78,12 +78,10 @@ function MyInfo() {
           {isLoading ? (
             <p className="myinfo-hint">조회 중...</p>
           ) : errorMessage ? (
-            <p className="myinfo-hint" role="alert">
+            <p className="myinfo-hint is-error" role="alert">
               {errorMessage}
             </p>
-          ) : (
-            <p className="myinfo-hint">내 정보 API 연결 완료</p>
-          )}
+          ) : null}
         </div>
 
         <div className="page-actions">
