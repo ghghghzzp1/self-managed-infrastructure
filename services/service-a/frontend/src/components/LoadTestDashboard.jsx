@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import './LoadTestDashboard.css';
 
 const SNAPSHOT_POLL_MS = 1500;
@@ -237,11 +237,33 @@ function IpSummary({ summary }) {
 function CbAndStatusDistribution({ snapshotHistory, events }) {
   const points = useMemo(() => {
     const raw = snapshotHistory
-      .filter((s) => s && s.circuitBreakerState)
-      .slice(0, 120)
+      .filter((s) => s && s.circuitBreakerState && s.timestamp)
+      .slice(0, 140)
       .reverse(); // oldest -> newest
-    return raw.map((s) => cbMeta(s.circuitBreakerState).tone);
+
+    return raw.map((s) => ({
+      ts: s.timestamp,
+      state: s.circuitBreakerState,
+      tone: cbMeta(s.circuitBreakerState).tone,
+    }));
   }, [snapshotHistory]);
+
+  const oldestLabel = points.length ? formatClock(points[0].ts) : '—';
+  const newestLabel = points.length ? formatClock(points[points.length - 1].ts) : '—';
+
+  const [slide, setSlide] = useState(false);
+  const newestTsRef = useRef(null);
+
+  useEffect(() => {
+    const newestTs = points.length ? points[points.length - 1].ts : null;
+    if (!newestTs) return;
+    if (newestTsRef.current === newestTs) return;
+    newestTsRef.current = newestTs;
+
+    setSlide(true);
+    const t = window.setTimeout(() => setSlide(false), 220);
+    return () => window.clearTimeout(t);
+  }, [points]);
 
   const counts = useMemo(() => {
     const c = new Map();
@@ -257,14 +279,31 @@ function CbAndStatusDistribution({ snapshotHistory, events }) {
 
   return (
     <div className="dist">
-      <div className="dist__timeline" aria-label="Circuit breaker state timeline">
-        {points.length ? (
-          points.map((tone, idx) => (
-            <span key={idx} className={`dist__tick dist__tick--${tone}`} aria-hidden />
-          ))
-        ) : (
-          <div className="muted">No snapshot history.</div>
-        )}
+      <div className="dist__timelineWrap" aria-label="Circuit breaker state timeline">
+        <div className="dist__timeline">
+          {points.length ? (
+            <div className={`dist__ticks ${slide ? 'dist__ticks--slide' : ''}`}>
+              {points.map((p, idx) => (
+                <span
+                  key={`${p.ts}-${idx}`}
+                  className={[
+                    'dist__tick',
+                    `dist__tick--${p.tone}`,
+                    idx === points.length - 1 ? 'dist__tick--latest' : '',
+                  ].join(' ')}
+                  title={`${formatClock(p.ts)} · ${p.state}`}
+                  aria-hidden
+                />
+              ))}
+            </div>
+          ) : (
+            <div className="muted">No snapshot history.</div>
+          )}
+        </div>
+        <div className="dist__time" aria-hidden>
+          <span className="dist__timeLabel">{oldestLabel}</span>
+          <span className="dist__timeLabel">{newestLabel}</span>
+        </div>
       </div>
       <div className="dist__bars" aria-label="HTTP status distribution">
         {counts.map(({ code, n }) => (

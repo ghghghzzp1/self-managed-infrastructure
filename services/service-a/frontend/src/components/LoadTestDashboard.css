@@ -348,15 +348,42 @@
   gap: 12px;
 }
 
+.dist__timelineWrap {
+  display: grid;
+  gap: 6px;
+}
+
 .dist__timeline {
+  position: relative;
   display: flex;
-  gap: 2px;
   align-items: center;
   padding: 10px;
   border-radius: 12px;
   background: rgba(255, 255, 255, 0.03);
   border: 1px solid rgba(255, 255, 255, 0.06);
   overflow: hidden;
+}
+
+.dist__ticks {
+  display: flex;
+  gap: 2px;
+  align-items: center;
+  will-change: transform;
+}
+
+@keyframes distSlideIn {
+  from {
+    transform: translateX(10px);
+    opacity: 0.9;
+  }
+  to {
+    transform: translateX(0);
+    opacity: 1;
+  }
+}
+
+.dist__ticks--slide {
+  animation: distSlideIn 180ms ease-out;
 }
 
 .dist__tick {
@@ -377,6 +404,43 @@
 
 .dist__tick--danger {
   background: rgba(239, 68, 68, 0.85);
+}
+
+.dist__tick--latest {
+  outline: 1px solid rgba(255, 255, 255, 0.6);
+  outline-offset: 1px;
+  box-shadow: 0 0 0 3px rgba(255, 255, 255, 0.06);
+}
+
+.dist__tick--latest.dist__tick--ok {
+  box-shadow:
+    0 0 0 3px rgba(255, 255, 255, 0.06),
+    0 0 14px rgba(34, 197, 94, 0.35);
+}
+
+.dist__tick--latest.dist__tick--warn {
+  box-shadow:
+    0 0 0 3px rgba(255, 255, 255, 0.06),
+    0 0 14px rgba(251, 191, 36, 0.28);
+}
+
+.dist__tick--latest.dist__tick--danger {
+  box-shadow:
+    0 0 0 3px rgba(255, 255, 255, 0.06),
+    0 0 14px rgba(239, 68, 68, 0.28);
+}
+
+.dist__time {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 0 2px;
+}
+
+.dist__timeLabel {
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--text-muted);
 }
 
 .dist__bars {
