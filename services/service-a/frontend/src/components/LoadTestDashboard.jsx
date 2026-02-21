@@ -238,7 +238,7 @@ function CbAndStatusDistribution({ snapshotHistory, events }) {
   const points = useMemo(() => {
     const raw = snapshotHistory
       .filter((s) => s && s.circuitBreakerState && s.timestamp)
-      .slice(0, 140)
+      .slice(0, 260)
       .reverse(); // oldest -> newest
 
     return raw.map((s) => ({
@@ -253,6 +253,8 @@ function CbAndStatusDistribution({ snapshotHistory, events }) {
 
   const [slide, setSlide] = useState(false);
   const newestTsRef = useRef(null);
+  const timelineRef = useRef(null);
+  const [stickToEnd, setStickToEnd] = useState(true);
 
   useEffect(() => {
     const newestTs = points.length ? points[points.length - 1].ts : null;
@@ -264,6 +266,19 @@ function CbAndStatusDistribution({ snapshotHistory, events }) {
     const t = window.setTimeout(() => setSlide(false), 220);
     return () => window.clearTimeout(t);
   }, [points]);
+
+  useEffect(() => {
+    if (!stickToEnd) return;
+    const el = timelineRef.current;
+    if (!el) return;
+    el.scrollTo({ left: el.scrollWidth, behavior: 'smooth' });
+  }, [stickToEnd, points]);
+
+  const onTimelineScroll = (e) => {
+    const el = e.currentTarget;
+    const remain = el.scrollWidth - (el.scrollLeft + el.clientWidth);
+    setStickToEnd(remain < 24);
+  };
 
   const counts = useMemo(() => {
     const c = new Map();
@@ -280,7 +295,13 @@ function CbAndStatusDistribution({ snapshotHistory, events }) {
   return (
     <div className="dist">
       <div className="dist__timelineWrap" aria-label="Circuit breaker state timeline">
-        <div className="dist__timeline">
+        <div
+          className="dist__timeline"
+          ref={timelineRef}
+          onScroll={onTimelineScroll}
+          role="region"
+          aria-label="Circuit breaker state timeline (scrollable)"
+        >
           {points.length ? (
             <div className={`dist__ticks ${slide ? 'dist__ticks--slide' : ''}`}>
               {points.map((p, idx) => (
@@ -302,7 +323,10 @@ function CbAndStatusDistribution({ snapshotHistory, events }) {
         </div>
         <div className="dist__time" aria-hidden>
           <span className="dist__timeLabel">{oldestLabel}</span>
-          <span className="dist__timeLabel">{newestLabel}</span>
+          <span className="dist__timeLabel dist__timeLabel--right">
+            {newestLabel}
+            {stickToEnd ? '' : ' (scroll → latest)'}
+          </span>
         </div>
       </div>
       <div className="dist__bars" aria-label="HTTP status distribution">
@@ -345,7 +369,7 @@ export default function LoadTestDashboard() {
         const data = await fetchDefaultData('/api/system/snapshot', { signal: controller.signal });
         if (stopped) return;
         setSnapshot(data);
-        setSnapshotHistory((prev) => [data, ...prev].slice(0, 200));
+        setSnapshotHistory((prev) => [data, ...prev].slice(0, 360));
         setError(null);
       } catch (e) {
         if (!stopped) setError(e instanceof Error ? e.message : String(e));
