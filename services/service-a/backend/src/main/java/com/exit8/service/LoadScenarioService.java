@@ -88,6 +88,7 @@ public class LoadScenarioService {
     @CircuitBreaker(name = CircuitNames.TEST_CIRCUIT)
     @Transactional(readOnly = true)
     public void simulateDbReadLoad(int repeatCount) {
+
         if (repeatCount <= 0 || repeatCount > MAX_REPEAT) {
             throw new ApiException(
                     "INVALID_PARAM",
@@ -97,10 +98,13 @@ public class LoadScenarioService {
         }
         Pageable pageable = PageRequest.of(0, 20, Sort.by("id").ascending());
 
+        // 요청 시작 시점의 Redis 상태 스냅샷
+        boolean cacheEnabled = runtimeFeatureState.isRedisCacheEnabled();
+
         for (int i = 0; i < repeatCount; i++) {
 
             // Redis OFF → DB 직행
-            if (!runtimeFeatureState.isRedisCacheEnabled()) {
+            if (!cacheEnabled) {
                 dummyDataRepository.findAll(pageable);
                 continue;
             }
