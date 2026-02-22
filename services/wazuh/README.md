@@ -1,42 +1,24 @@
-# Wazuh SIEM/HIDS
+# Deploy Wazuh Docker in single node configuration
 
-Wazuh는 리소스를 많이 사용하므로 별도의 compose 파일로 분리했습니다.
+This deployment is defined in the `docker-compose.yml` file with one Wazuh manager containers, one Wazuh indexer containers, and one Wazuh dashboard container. It can be deployed by following these steps: 
 
-## Quick Start
+1) Increase max_map_count on your host (Linux). This command must be run with root permissions:
+```
+$ sysctl -w vm.max_map_count=262144
+```
+2) Run the certificate creation script:
+```
+$ docker compose -f generate-indexer-certs.yml run --rm generator
+```
+3) Start the environment with docker-compose:
 
-```bash
-# Wazuh 스택 실행
-docker-compose -f services/wazuh/docker-compose.wazuh.yml up -d
-
-# 상태 확인
-docker-compose -f services/wazuh/docker-compose.wazuh.yml ps
+- In the foregroud:
+```
+$ docker compose up
+```
+- In the background:
+```
+$ docker compose up -d
 ```
 
-## Access
-
-- **Wazuh Dashboard**: https://localhost:5601
-  - Username: `admin`
-  - Password: `SecretPassword`
-
-## Components
-
-| Component | Port | Description |
-|-----------|------|-------------|
-| Wazuh Manager | 55000 | API |
-| Wazuh Manager | 1514 | Agent connection |
-| Wazuh Manager | 1515 | Agent enrollment |
-| Wazuh Indexer | 9200 | OpenSearch |
-| Wazuh Dashboard | 5601 | Web UI |
-
-## Requirements
-
-- Minimum 4GB RAM for Wazuh stack
-- `vm.max_map_count=262144` (for OpenSearch)
-
-```bash
-# Set vm.max_map_count (required for OpenSearch)
-sudo sysctl -w vm.max_map_count=262144
-
-# Make it persistent
-echo "vm.max_map_count=262144" | sudo tee -a /etc/sysctl.conf
-```
+The environment takes about 1 minute to get up (depending on your Docker host) for the first time since Wazuh Indexer must be started for the first time and the indexes and index patterns must be generated.
