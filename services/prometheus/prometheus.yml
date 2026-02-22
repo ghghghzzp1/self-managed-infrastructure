@@ -12,13 +12,13 @@ scrape_configs:
   - job_name: 'service-a'
     metrics_path: /actuator/prometheus
     static_configs:
-      - targets: ['service-a:8080']
+      - targets: ['service-a-backend:8080']
 
   # Service B (FastAPI)
   - job_name: 'service-b'
     metrics_path: /metrics
     static_configs:
-      - targets: ['service-b:8000']
+      - targets: ['service-b-backend:8000']
 
   # PostgreSQL (via exporter)
   - job_name: 'postgres'
