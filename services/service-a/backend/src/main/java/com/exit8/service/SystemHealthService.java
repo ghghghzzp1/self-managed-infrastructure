@@ -221,8 +221,7 @@ public class SystemHealthService {
      */
     public ToggleResponse toggleRateLimit() {
         boolean prev = runtimeFeatureState.isRateLimitEnabled();
-        runtimeFeatureState.toggleRateLimit();
-        boolean next = runtimeFeatureState.isRateLimitEnabled();
+        boolean next = runtimeFeatureState.toggleRateLimit();
 
         // 상태 변화를 문자열로 생성 (예: "OFF -> ON" 또는 "ON -> OFF")
         String fromStatus = prev ? "ON" : "OFF";
@@ -244,8 +243,7 @@ public class SystemHealthService {
      */
     public ToggleResponse toggleRedisCache() {
         boolean prev = runtimeFeatureState.isRedisCacheEnabled();
-        runtimeFeatureState.toggleRedisCache();
-        boolean next = runtimeFeatureState.isRedisCacheEnabled();
+        boolean next = runtimeFeatureState.toggleRedisCache();
 
         String fromStatus = prev ? "ON" : "OFF";
         String toStatus = next ? "ON" : "OFF";
