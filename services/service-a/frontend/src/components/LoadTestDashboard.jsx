@@ -4,6 +4,8 @@ import './LoadTestDashboard.css';
 const SNAPSHOT_POLL_MS = 1500;
 const REQUESTS_POLL_MS = 1200;
 
+// JMeter 부하 테스트에서 사용하는 공격 시뮬레이션 IP 목록
+// services/service-a/jmeter/ 테스트 설정과 동기화 필요
 const ATTACK_IPS = new Set(['10.10.10.10']);
 
 function safeJsonParse(text) {
@@ -169,8 +171,8 @@ function RealtimeRequestFeed({ events }) {
           <div className="feed__cell" role="columnheader">Event</div>
         </div>
 
-        {events.map((e) => {
-          const key = `${e.traceId || 'no-trace'}-${e.timestamp || Math.random()}`;
+        {events.map((e, idx) => {
+          const key = e.traceId || `${e.timestamp}-${idx}`;
           const tone = statusTone(e.status);
           const ipTone = ATTACK_IPS.has(e.ip) ? 'attack' : 'normal';
 
