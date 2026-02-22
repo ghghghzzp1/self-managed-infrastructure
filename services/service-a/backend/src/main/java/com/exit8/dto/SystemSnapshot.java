@@ -15,5 +15,8 @@ public record SystemSnapshot(
     double hikariTimeoutCount,
     // 실험용 평균 응답시간
     Long avgResponseTimeMs,
-    boolean rateLimitEnabled
+    boolean rateLimitEnabled,
+    // redis
+    boolean redisCacheEnabled,
+    Double cacheHitRatio
 ) {}

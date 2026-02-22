@@ -14,7 +14,10 @@ import org.springframework.context.annotation.Configuration;
 @Configuration
 public class MetricsConfig {
 
-    // 모든 Micrometer 메트릭에 service=service-a-backend 자동 부여
+    /**
+     * 모든 메트릭에 공통 tag 부여
+     * Grafana에서 서비스 단위 필터링 가능
+     */
     @Bean
     MeterRegistryCustomizer<MeterRegistry> metricsCommonTags() {
         return registry -> registry.config()
@@ -22,8 +25,8 @@ public class MetricsConfig {
     }
 
     /**
-     * Rate Limit에 의해 차단된 요청 누적 카운터
-     * (Cardinality 폭발 방지를 위해 label 사용하지 않음)
+     * Rate Limit 차단 누적 카운터
+     * label을 두지 않아 cardinality 증가 방지
      */
     @Bean
     public Counter rateLimitBlockedCounter(MeterRegistry registry) {
@@ -33,7 +36,7 @@ public class MetricsConfig {
     }
 
     /**
-     * Rate Limit을 통과한 요청 누적 카운터
+     * Rate Limit 통과 누적 카운터
      */
     @Bean
     public Counter rateLimitAllowedCounter(MeterRegistry registry) {
@@ -41,4 +44,26 @@ public class MetricsConfig {
                 .description("Total allowed requests by rate limit")
                 .register(registry);
     }
+
+    /**
+     * Redis Cache Hit 누적 카운터
+     */
+    @Bean
+    public Counter cacheHit(MeterRegistry registry) {
+        return Counter.builder("cache_hit_total")
+                .description("Redis cache hit count")
+                .register(registry);
+    }
+
+    /**
+     * Redis Cache Miss 누적 카운터
+     * (Redis 장애 fallback 포함)
+     */
+    @Bean
+    public Counter cacheMiss(MeterRegistry registry) {
+        return Counter.builder("cache_miss_total")
+                .description("Redis cache miss count")
+                .register(registry);
+    }
+
 }
