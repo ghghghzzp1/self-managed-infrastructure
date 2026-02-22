@@ -1,6 +1,6 @@
 package com.exit8.dto;
 
 public record ToggleResponse(
-        boolean ToggleEnabled,
+        boolean toggleEnabled,
         String statusMessage
 ) {}
