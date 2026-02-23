@@ -729,6 +729,11 @@ management:
     - READ 시 캐싱 적용
     - Read Replica + Cache 비교 테스트
     - 캐시 무효화 전략은 TTL 기반 단순 전략만 사용
+12. Graceful Shutdown 적용
+    - SIGTERM 수신 시 신규 요청 수락을 중단하고(in-flight 요청은 마무리) 안전 종료
+    - `server.shutdown=graceful` 설정 추가
+    - spring.lifecycle.timeout-per-shutdown-phase로 종료 유예 시간 고정
+    - 컨테이너 종료 유예(DevOps의 terminationGracePeriodSeconds) 보다 작거나 같아야 함
     
 <br>
 
