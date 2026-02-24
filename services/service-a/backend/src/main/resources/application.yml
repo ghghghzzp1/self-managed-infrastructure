@@ -1,6 +1,8 @@
 spring:
   application:
     name: service-a-backend
+  lifecycle:
+    timeout-per-shutdown-phase: 20s
   jpa:
     database-platform: org.hibernate.dialect.PostgreSQLDialect
     hibernate:
@@ -50,6 +52,7 @@ spring:
 
 server:
   port: 8080
+  shutdown: graceful
 
 management:
   health:
