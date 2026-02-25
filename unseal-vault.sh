@@ -46,7 +46,14 @@ for i in $(seq 1 15); do
         exit 0
       fi
     elif [ "$EXIT_CODE" -eq 1 ]; then
-      echo "Vault container not ready yet... ($i/15)"
+      # Check if container is stopped/missing vs. still starting up
+      CONTAINER_STATUS=$(docker inspect --format='{{.State.Status}}' vault 2>/dev/null || echo "not_found")
+      if [ "$CONTAINER_STATUS" = "not_found" ] || [ "$CONTAINER_STATUS" = "exited" ]; then
+        echo "Vault container is $CONTAINER_STATUS. Starting vault..."
+        docker compose -f "${SCRIPT_DIR}/docker-compose.yml" up -d vault || true
+      else
+        echo "Vault container not ready yet... ($i/15)"
+      fi
     fi
   else
     echo "Vault is already unsealed!"
