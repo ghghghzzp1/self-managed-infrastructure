@@ -53,9 +53,9 @@ services:
     deploy:
       resources:
         limits:
-          memory: 1536M
+          memory: 4096M   # 1536M -> 4096M 증설
         reservations:
-          memory: 768M
+          memory: 2048M   # 768M -> 2048M 증설
 
   wazuh.indexer:
     image: wazuh/wazuh-indexer:4.9.2
@@ -64,7 +64,8 @@ services:
     ports:
       - "9200:9200"
     environment:
-      - "OPENSEARCH_JAVA_OPTS=-Xms512m -Xmx512m -XX:MaxDirectMemorySize=512m -XX:MaxDirectMemorySize=512m"
+      # JVM 힙 메모리를 1GB로 늘리고 중복된 옵션 제거
+      - "OPENSEARCH_JAVA_OPTS=-Xms1g -Xmx1g -XX:MaxDirectMemorySize=512m" 
     ulimits:
       memlock:
         soft: -1
@@ -86,9 +87,9 @@ services:
     deploy:
       resources:
         limits:
-          memory: 2048M
+          memory: 4096M   # 2048M -> 4096M 증설
         reservations:
-          memory: 1024M
+          memory: 2048M   # 1024M -> 2048M 증설
 
   wazuh.dashboard:
     image: wazuh/wazuh-dashboard:4.9.2
@@ -124,9 +125,9 @@ services:
     deploy:
       resources:
         limits:
-          memory: 512M
+          memory: 1024M   # 512M -> 1024M 증설
         reservations:
-          memory: 256M
+          memory: 512M    # 256M -> 512M 증설
 
 networks:
   wazuh_internal:
