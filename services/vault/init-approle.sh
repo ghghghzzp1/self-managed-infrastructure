@@ -86,8 +86,7 @@ create_approle_role() {
     echo -e "${YELLOW}Creating AppRole role for ${service_name}...${NC}"
 
     vault write "auth/approle/role/${service_name}-backend" \
-        token_ttl=1h \
-        token_max_ttl=4h \
+        token_period=1h \
         token_policies="${policy_name}" \
         bind_secret_id=true \
         secret_id_ttl=720h \
