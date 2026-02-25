@@ -22,6 +22,27 @@ if "%TYPE_CHOICE%"=="1" (
 )
 
 echo.
+echo ===========================================
+echo   Target 설정 (HOST / PORT)
+echo ===========================================
+
+set /p HOST="HOST 입력 (예: service-a.example.com) [기본: host.docker.internal]: "
+if "!HOST!"=="" set "HOST=host.docker.internal"
+
+set /p PORT="PORT 입력 (숫자만, 예: 8080/8081) [기본: 8080]: "
+if "!PORT!"=="" (
+    set "PORT=8080"
+)
+
+REM 간단 검증: PORT 숫자 여부 (숫자 아니면 경고 후 종료)
+echo !PORT!| findstr /r "^[0-9][0-9]*$" >nul
+if errorlevel 1 (
+    echo [오류] PORT는 숫자만 입력 가능합니다. 현재값: "!PORT!"
+    pause
+    exit /b 1
+)
+
+echo.
 set /p THREADS="공격 트래픽 동시 실행 스레드 수(ATTACK_THREADS)를 입력하세요: "
 
 if "%THREADS%"=="" (
@@ -57,8 +78,12 @@ echo.
 echo ---------------------------------------
 echo [실행 설정]
 echo   - 테스트 유형 : !MODE!
+echo   - Target      : http://!HOST!:!PORT!
 echo   - 공격 스레드 : !THREADS!
 echo   - Attack Repeat : !ATTACK_REPEAT!
+echo   - Attack Delay  : !DELAY! ms
+echo   - Attack Ramp   : !RAMP! s
+echo   - Attack Loops  : !LOOPS!
 echo ---------------------------------------
 
 docker run --rm ^
@@ -78,6 +103,8 @@ docker run --rm ^
   -Jjmeter.save.saveservice.bytes=true ^
   -Jjmeter.save.saveservice.latency=true ^
   -Jjmeter.save.saveservice.connect_time=true ^
+  -JHOST=!HOST! ^
+  -JPORT=!PORT! ^
   -JATTACK_THREADS=!THREADS! ^
   -JATTACK_RAMP=!RAMP! ^
   -JATTACK_DELAY=!DELAY! ^
