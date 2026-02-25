@@ -18,13 +18,10 @@ services:
       - "443:443"
       - "81:81"    # Admin UI
       - "8081:8081"  # service-a API (부하테스트 직접 접근용)
-      - "8082:8082"  # service-b API (부하테스트 직접 접근용)
     volumes:
       - npm_data:/data
       - npm_letsencrypt:/etc/letsencrypt
-      - ./services/npm/custom/http_redirect.conf:/data/nginx/custom/http_redirect.conf
-      - ./services/npm/custom/service-a-api.conf:/data/nginx/custom/service-a-api.conf
-      - ./services/npm/custom/service-b-api.conf:/data/nginx/custom/service-b-api.conf
+      - ./services/npm/custom/http.conf:/data/nginx/custom/http.conf
     networks:
       - frontend
       - backend
