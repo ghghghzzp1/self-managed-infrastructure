@@ -2,8 +2,13 @@
 # auto-unseal.sh - Starts Vault server and auto-unseals
 # Unseal keys are read from environment variables (set via .env)
 
-# Start vault server in background
-vault server -config=/vault/config &
+# Fix data directory permissions so vault user (UID 100, GID 1000) can write
+# Docker named volumes are created as root:root by default
+chown -R 100:1000 /vault/data 2>/dev/null || true
+chmod 750 /vault/data 2>/dev/null || true
+
+# Start vault server as vault user (UID 100) using su-exec
+su-exec vault vault server -config=/vault/config &
 VAULT_PID=$!
 
 # Wait for Vault to be reachable, then unseal
