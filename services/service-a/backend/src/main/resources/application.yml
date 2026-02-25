@@ -91,6 +91,7 @@ resilience4j.circuitbreaker:
   instances:
     testCircuit:
       baseConfig: default
+      automatic-transition-from-open-to-half-open-enabled: true # 자동 전환 옵션
       register-health-indicator: true
       slow-call-duration-threshold: 2000
       slow-call-rate-threshold: 50
