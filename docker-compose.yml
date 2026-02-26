@@ -1,5 +1,3 @@
-version: '3.8'
-
 # ==========================================
 # 16GB / 4core 서버 최적화 설정
 # 총 메모리 limit:   ~12.6GB
@@ -14,13 +12,19 @@ version: '3.8'
 #   Exporters:       ~384M
 # ==========================================
 
+# 공통 로그 설정 (YAML anchor)
+x-logging: &default-logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "3"
+
 services:
   # ===================
   # 퍼블릭 레이어
   # ===================
   nginx-proxy-manager:
-    image: jc21/nginx-proxy-manager:latest
-    container_name: npm
+    image: jc21/nginx-proxy-manager:2.11.3
     restart: unless-stopped
     ports:
       - "80:80"
@@ -34,13 +38,13 @@ services:
     networks:
       - frontend
       - backend
+    logging: *default-logging
     deploy:
       resources:
         limits:
           memory: 512M
         reservations:
           memory: 256M
-
   # ==========
   # 데이터 레이어
   # ==========
@@ -70,13 +74,8 @@ services:
       interval: 10s
       timeout: 5s
       retries: 5
+    logging: *default-logging
     deploy:
-      resources:
-        limits:
-          memory: 1536M
-        reservations:
-          memory: 768M
-
   redis:
     image: redis:7-alpine
     container_name: redis
@@ -95,13 +94,8 @@ services:
       interval: 10s
       timeout: 5s
       retries: 5
+    logging: *default-logging
     deploy:
-      resources:
-        limits:
-          memory: 512M
-        reservations:
-          memory: 256M
-
   # =================
   # 애플리케이션 레이어
   # =================
@@ -134,13 +128,9 @@ services:
       interval: 30s
       timeout: 10s
       retries: 3
+      start_period: 60s
+    logging: *default-logging
     deploy:
-      resources:
-        limits:
-          memory: 1024M
-        reservations:
-          memory: 512M
-
   # Service A - Frontend (Nginx)
   service-a-frontend:
     image: exit8/service-a-frontend:latest
@@ -161,13 +151,8 @@ services:
       interval: 30s
       timeout: 10s
       retries: 3
+    logging: *default-logging
     deploy:
-      resources:
-        limits:
-          memory: 192M
-        reservations:
-          memory: 96M
-
   # Service B - Backend (FastAPI)
   service-b-backend:
     image: exit8/service-b-backend:latest
@@ -194,13 +179,9 @@ services:
       interval: 30s
       timeout: 10s
       retries: 3
+      start_period: 30s
+    logging: *default-logging
     deploy:
-      resources:
-        limits:
-          memory: 768M
-        reservations:
-          memory: 384M
-
   # Service B - Frontend (Nginx)
   service-b-frontend:
     image: exit8/service-b-frontend:latest
@@ -221,13 +202,8 @@ services:
       interval: 30s
       timeout: 10s
       retries: 3
+    logging: *default-logging
     deploy:
-      resources:
-        limits:
-          memory: 192M
-        reservations:
-          memory: 96M
-
   # ==============
   # 보안 레이어
   # ==============
@@ -261,13 +237,8 @@ services:
       timeout: 10s
       retries: 3
       start_period: 30s
+    logging: *default-logging
     deploy:
-      resources:
-        limits:
-          memory: 384M
-        reservations:
-          memory: 192M
-
   # ==============
   # 보안 모니터링 레이어 (Wazuh SIEM)
   # ==============
@@ -290,13 +261,13 @@ services:
     environment:
       - INDEXER_URL=https://wazuh.indexer:9200
       - INDEXER_USERNAME=admin
-      - INDEXER_PASSWORD=SecretPassword
+      - INDEXER_PASSWORD=${WAZUH_INDEXER_PASSWORD}
       - FILEBEAT_SSL_VERIFICATION_MODE=full
       - SSL_CERTIFICATE_AUTHORITIES=/etc/ssl/root-ca.pem
       - SSL_CERTIFICATE=/etc/ssl/filebeat.pem
       - SSL_KEY=/etc/ssl/filebeat.key
       - API_USERNAME=wazuh-wui
-      - API_PASSWORD=MyS3cr37P450r.*-
+      - API_PASSWORD=${WAZUH_API_PASSWORD}
     volumes:
       - wazuh_api_configuration:/var/ossec/api/configuration
       - wazuh_etc:/var/ossec/etc
@@ -319,13 +290,8 @@ services:
     networks:
       - wazuh_internal
       - backend
+    logging: *default-logging
     deploy:
-      resources:
-        limits:
-          memory: 2048M
-        reservations:
-          memory: 1024M
-
   wazuh.indexer:
     image: wazuh/wazuh-indexer:4.9.2
     hostname: wazuh.indexer
@@ -353,13 +319,8 @@ services:
       - ./services/wazuh/config/wazuh_indexer/internal_users.yml:/usr/share/wazuh-indexer/opensearch-security/internal_users.yml
     networks:
       - wazuh_internal
+    logging: *default-logging
     deploy:
-      resources:
-        limits:
-          memory: 3072M
-        reservations:
-          memory: 1536M
-
   wazuh.dashboard:
     image: wazuh/wazuh-dashboard:4.9.2
     hostname: wazuh.dashboard
@@ -368,12 +329,12 @@ services:
       - "8443:5601"
     environment:
       - INDEXER_USERNAME=admin
-      - INDEXER_PASSWORD=SecretPassword
+      - INDEXER_PASSWORD=${WAZUH_INDEXER_PASSWORD}
       - WAZUH_API_URL=https://wazuh.manager
       - DASHBOARD_USERNAME=kibanaserver
-      - DASHBOARD_PASSWORD=kibanaserver
+      - DASHBOARD_PASSWORD=${WAZUH_DASHBOARD_PASSWORD}
       - API_USERNAME=wazuh-wui
-      - API_PASSWORD=MyS3cr37P450r.*-
+      - API_PASSWORD=${WAZUH_API_PASSWORD}
     volumes:
       - ./services/wazuh/config/wazuh_indexer_ssl_certs/wazuh.dashboard.pem:/usr/share/wazuh-dashboard/certs/wazuh-dashboard.pem
       - ./services/wazuh/config/wazuh_indexer_ssl_certs/wazuh.dashboard-key.pem:/usr/share/wazuh-dashboard/certs/wazuh-dashboard-key.pem
@@ -391,13 +352,8 @@ services:
       - wazuh_internal
       - frontend
       - backend
+    logging: *default-logging
     deploy:
-      resources:
-        limits:
-          memory: 1024M
-        reservations:
-          memory: 512M
-
   # ===================
   # 관측 레이어
   # ===================
@@ -418,6 +374,7 @@ services:
       - '--web.enable-lifecycle'
     networks:
       - backend
+    logging: *default-logging
     deploy:
       resources:
         limits:
@@ -443,6 +400,7 @@ services:
       - prometheus
     networks:
       - backend
+    logging: *default-logging
     deploy:
       resources:
         limits:
@@ -466,6 +424,7 @@ services:
       - '--collector.filesystem.mount-points-exclude=^/(sys|proc|dev|host|etc)($$|/)'
     networks:
       - backend
+    logging: *default-logging
     deploy:
       resources:
         limits:
@@ -485,6 +444,7 @@ services:
     networks:
       - backend
       - db
+    logging: *default-logging
     deploy:
       resources:
         limits:
@@ -504,6 +464,7 @@ services:
     networks:
       - backend
       - db
+    logging: *default-logging
     deploy:
       resources:
         limits:

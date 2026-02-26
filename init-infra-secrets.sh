@@ -120,6 +120,16 @@ main() {
     update_env "GRAFANA_PASSWORD" "$GRAFANA_PASSWORD"
     echo -e "${GREEN}✓ Grafana credentials updated${NC}"
 
+    # Fetch Wazuh credentials
+    echo -e "${YELLOW}Fetching Wazuh credentials...${NC}"
+    WAZUH_INDEXER_PASSWORD=$(get_secret "wazuh" "indexer_password")
+    WAZUH_API_PASSWORD=$(get_secret "wazuh" "api_password")
+    WAZUH_DASHBOARD_PASSWORD=$(get_secret "wazuh" "dashboard_password")
+
+    update_env "WAZUH_INDEXER_PASSWORD" "$WAZUH_INDEXER_PASSWORD"
+    update_env "WAZUH_API_PASSWORD" "$WAZUH_API_PASSWORD"
+    update_env "WAZUH_DASHBOARD_PASSWORD" "$WAZUH_DASHBOARD_PASSWORD"
+    echo -e "${GREEN}✓ Wazuh credentials updated${NC}"
     echo ""
     echo -e "${GREEN}✓ 모든 인프라 secrets를 성공적으로 가져왔습니다!${NC}"
     echo -e "${GREEN}✓ .env 파일 업데이트: ${ENV_FILE}${NC}"

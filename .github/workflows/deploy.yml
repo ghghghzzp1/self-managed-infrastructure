@@ -8,9 +8,13 @@ on:
       - 'docker-compose.yml'
       - '.github/workflows/deploy.yml'
 
+# Prevent concurrent deployments to avoid conflicts
+concurrency:
+  group: deploy-${{ github.ref }}
+  cancel-in-progress: false
+
 env:
   DOCKER_HUB_USERNAME: exit8
-
 jobs:
   # ====================
   # Detect Changed Services
@@ -408,10 +412,26 @@ jobs:
               ls -la
               exit 1
             fi
+            # ===================================
+            # Save current image tags for rollback
+            # ===================================
+            echo "Saving current image tags for potential rollback..."
+            ROLLBACK_FILE="/tmp/rollback_tags_${GITHUB_SHA}.txt"
+            > "$ROLLBACK_FILE"
+            
+            for service in service-a-backend service-a-frontend service-b-backend service-b-frontend; do
+              if docker ps --format '{{.Names}}' | grep -q "^${service}$"; then
+                CURRENT_IMAGE=$(docker inspect --format='{{.Config.Image}}' "$service" 2>/dev/null || echo "")
+                if [ -n "$CURRENT_IMAGE" ]; then
+                  echo "${service}=${CURRENT_IMAGE}" >> "$ROLLBACK_FILE"
+                  echo "  $service: $CURRENT_IMAGE"
+                fi
+              fi
+            done
+            echo "✓ Current image tags saved"
 
             # Build list of services to update
             SERVICES_TO_UPDATE=""
-
             # Pull and add application services
             if [ "$SERVICE_A_BACKEND" == "true" ]; then
               echo "Pulling service-a-backend..."
@@ -484,42 +504,100 @@ jobs:
             # Cleanup old images
             docker image prune -f
 
-            # Health check - wait for services to be ready (Spring Boot needs time to start)
-            echo "Waiting 30 seconds for services to be ready..."
-            sleep 30
+            # ===================================
+            # Health Check with Polling
+            # ===================================
+            HEALTH_CHECK_FAILED=false
+            MAX_RETRIES=15
+            RETRY_INTERVAL=5
 
-            # If docker-compose.yml changed, check all app services
+            echo "Waiting for services to be ready (polling every ${RETRY_INTERVAL}s, max $((MAX_RETRIES * RETRY_INTERVAL))s)..."
+
+            # Function to check service health with retries
+            check_service_health() {
+              local service=$1
+              local health_url=$2
+              local use_docker_exec=$3
+              local retries=0
+              
+              while [ $retries -lt $MAX_RETRIES ]; do
+                if [ "$use_docker_exec" == "true" ]; then
+                  if docker exec "$service" curl -sf "$health_url" > /dev/null 2>&1; then
+                    echo "  ✓ $service is healthy"
+                    return 0
+                  fi
+                else
+                  if curl -sf "$health_url" > /dev/null 2>&1; then
+                    echo "  ✓ $service is healthy"
+                    return 0
+                  fi
+                fi
+                retries=$((retries + 1))
+                echo "  Waiting for $service... ($retries/$MAX_RETRIES)"
+                sleep $RETRY_INTERVAL
+              done
+              
+              echo "  ✗ $service health check failed after $MAX_RETRIES attempts"
+              return 1
+            }
+
+            # Check services based on what changed
             if [ "$DOCKER_COMPOSE_CHANGED" == "true" ]; then
               echo "Health check for all services (docker-compose.yml changed)..."
-              docker exec service-a-backend curl -f http://localhost:8080/actuator/health || echo "Warning: service-a-backend health check failed"
-              docker exec service-b-backend curl -f http://localhost:8000/health || echo "Warning: service-b-backend health check failed"
-              curl -f http://localhost:3000/health || echo "Warning: service-a-frontend health check failed"
-              curl -f http://localhost:3002/health || echo "Warning: service-b-frontend health check failed"
+              
+              check_service_health "service-a-backend" "http://localhost:8080/actuator/health" "true" || HEALTH_CHECK_FAILED=true
+              check_service_health "service-b-backend" "http://localhost:8000/health" "true" || HEALTH_CHECK_FAILED=true
+              check_service_health "service-a-frontend" "http://localhost:3000/health" "false" || HEALTH_CHECK_FAILED=true
+              check_service_health "service-b-frontend" "http://localhost:3002/health" "false" || HEALTH_CHECK_FAILED=true
             else
-              # Backend health checks via docker exec (internal ports)
               if [ "$SERVICE_A_BACKEND" == "true" ]; then
-                echo "Health check for service-a-backend..."
-                docker exec service-a-backend curl -f http://localhost:8080/actuator/health || exit 1
+                check_service_health "service-a-backend" "http://localhost:8080/actuator/health" "true" || HEALTH_CHECK_FAILED=true
               fi
-
               if [ "$SERVICE_B_BACKEND" == "true" ]; then
-                echo "Health check for service-b-backend..."
-                docker exec service-b-backend curl -f http://localhost:8000/health || exit 1
+                check_service_health "service-b-backend" "http://localhost:8000/health" "true" || HEALTH_CHECK_FAILED=true
               fi
-
-              # Frontend health checks via exposed ports
               if [ "$SERVICE_A_FRONTEND" == "true" ]; then
-                echo "Health check for service-a-frontend..."
-                curl -f http://localhost:3000/health || exit 1
+                check_service_health "service-a-frontend" "http://localhost:3000/health" "false" || HEALTH_CHECK_FAILED=true
               fi
-
               if [ "$SERVICE_B_FRONTEND" == "true" ]; then
-                echo "Health check for service-b-frontend..."
-                curl -f http://localhost:3002/health || exit 1
+                check_service_health "service-b-frontend" "http://localhost:3002/health" "false" || HEALTH_CHECK_FAILED=true
               fi
             fi
 
-            echo "Deployment completed successfully"
+            # ===================================
+            # Rollback on failure
+            # ===================================
+            if [ "$HEALTH_CHECK_FAILED" == "true" ]; then
+              echo "❌ Health check failed! Initiating rollback..."
+              
+              if [ -f "$ROLLBACK_FILE" ] && [ -s "$ROLLBACK_FILE" ]; then
+                echo "Rolling back to previous image versions..."
+                
+                while IFS='=' read -r service image; do
+                  if [ -n "$service" ] && [ -n "$image" ]; then
+                    echo "  Rolling back $service to $image"
+                    docker pull "$image" || true
+                    docker stop "$service" 2>/dev/null || true
+                    docker rm -f "$service" 2>/dev/null || true
+                    docker run -d --name "$service" --network container:$(docker ps -q -f name=temp_rollback_$$ 2>/dev/null || echo "none") "$image" 2>/dev/null || \
+                    docker compose up -d --no-deps --force-recreate "$service" 2>/dev/null || true
+                  fi
+                done < "$ROLLBACK_FILE"
+                
+                echo "⚠ Rollback attempted. Manual verification may be required."
+              else
+                echo "⚠ No previous image tags found. Cannot rollback automatically."
+                echo "  Attempting to restart services with docker compose..."
+                docker compose up -d --force-recreate
+              fi
+              
+              exit 1
+            fi
+
+            # Cleanup rollback file on success
+            rm -f "$ROLLBACK_FILE"
+
+            echo "✅ Deployment completed successfully"
             if [ "$DOCKER_COMPOSE_CHANGED" == "true" ]; then
               echo "All services restarted due to docker-compose.yml change"
             else
