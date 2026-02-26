@@ -147,14 +147,14 @@ function ToggleChip({ enabled, busy, onClick }) {
   );
 }
 
-function Card({ title, children, right }) {
+function Card({ title, children, right, bodyClassName }) {
   return (
     <section className="card">
       <header className="card__header">
         <h2 className="card__title">{title}</h2>
         {right ? <div className="card__right">{right}</div> : null}
       </header>
-      <div className="card__body">{children}</div>
+      <div className={['card__body', bodyClassName].filter(Boolean).join(' ')}>{children}</div>
     </section>
   );
 }
@@ -471,18 +471,24 @@ export default function LoadTestDashboard() {
       </section>
 
       <section className="obs__grid" aria-label="Observability main grid">
-        <div className="obs__main">
-          <Card title="Realtime Request Feed" right={<span className="muted">polling 1–2s</span>}>
-            <RealtimeRequestFeed events={events} />
-          </Card>
-
+        <div className="obs__wide">
           <Card title="Circuit Breaker / HTTP Distribution">
             <CbAndStatusDistribution snapshotHistory={snapshotHistory} events={events} />
           </Card>
         </div>
 
+        <div className="obs__main">
+          <Card
+            title="Realtime Request Feed"
+            right={<span className="muted">polling 1–2s</span>}
+            bodyClassName="card__body--scrollY card__body--feed"
+          >
+            <RealtimeRequestFeed events={events} />
+          </Card>
+        </div>
+
         <div className="obs__side">
-          <Card title="IP Summary">
+          <Card title="IP Summary" bodyClassName="card__body--scrollY card__body--ipSummary">
             <IpSummary summary={ipSummary} />
           </Card>
         </div>
