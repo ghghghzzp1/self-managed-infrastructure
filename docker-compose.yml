@@ -1,8 +1,17 @@
 version: '3.8'
 
 # ==========================================
-# 8GB / 2core 서버 최적화 설정
-# 총 메모리 할당: ~5.5GB (시스템 예약 ~2.5GB)
+# 16GB / 4core 서버 최적화 설정
+# 총 메모리 limit:   ~12.6GB
+# 총 메모리 예약:    ~6.4GB
+# 시스템 예약:       ~3.4GB
+#
+# 레이어별 limit 분배:
+#   Wazuh SIEM:      ~6.1GB (manager 2G + indexer 3G + dashboard 1G)
+#   데이터:          ~2.0GB (postgres 1.5G + redis 512M)
+#   애플리케이션:    ~2.2GB (svc-a 1G + svc-b 768M + frontends 384M)
+#   인프라/관측:     ~2.3GB (vault 384M + prometheus 768M + grafana 512M + npm 512M)
+#   Exporters:       ~384M
 # ==========================================
 
 services:
@@ -28,9 +37,9 @@ services:
     deploy:
       resources:
         limits:
-          memory: 384M
+          memory: 512M
         reservations:
-          memory: 192M
+          memory: 256M
 
   # ==========
   # 데이터 레이어
@@ -45,11 +54,11 @@ services:
       POSTGRES_DB: ${POSTGRES_DB}
     command: >
       postgres
-      -c shared_buffers=256MB
-      -c work_mem=16MB
-      -c maintenance_work_mem=128MB
-      -c effective_cache_size=512MB
-      -c max_connections=100
+      -c shared_buffers=512MB
+      -c work_mem=32MB
+      -c maintenance_work_mem=256MB
+      -c effective_cache_size=1024MB
+      -c max_connections=200
     ports:
       - "5432:5432"
     volumes:
@@ -64,9 +73,9 @@ services:
     deploy:
       resources:
         limits:
-          memory: 1024M
+          memory: 1536M
         reservations:
-          memory: 512M
+          memory: 768M
 
   redis:
     image: redis:7-alpine
@@ -75,7 +84,7 @@ services:
     command: >
       redis-server
       --appendonly yes
-      --maxmemory 256mb
+      --maxmemory 384mb
       --maxmemory-policy allkeys-lru
     volumes:
       - redis_data:/data
@@ -89,12 +98,12 @@ services:
     deploy:
       resources:
         limits:
-          memory: 384M
+          memory: 512M
         reservations:
-          memory: 128M
+          memory: 256M
 
   # =================
-  # 애플리케이션 레이어 (분리된 서비스)
+  # 애플리케이션 레이어
   # =================
 
   # Service A - Backend (Spring Boot)
@@ -106,7 +115,7 @@ services:
       - "8080"
     environment:
       SPRING_PROFILES_ACTIVE: docker
-      JAVA_OPTS: "-Xms256m -Xmx512m -XX:+UseG1GC -XX:MaxGCPauseMillis=100"
+      JAVA_OPTS: "-Xms512m -Xmx768m -XX:+UseG1GC -XX:MaxGCPauseMillis=100"
       VAULT_URI: http://vault:8200
       VAULT_ROLE_ID: ${SERVICE_A_ROLE_ID}
       VAULT_SECRET_ID: ${SERVICE_A_SECRET_ID}
@@ -128,9 +137,9 @@ services:
     deploy:
       resources:
         limits:
-          memory: 768M
+          memory: 1024M
         reservations:
-          memory: 384M
+          memory: 512M
 
   # Service A - Frontend (Nginx)
   service-a-frontend:
@@ -155,9 +164,9 @@ services:
     deploy:
       resources:
         limits:
-          memory: 128M
+          memory: 192M
         reservations:
-          memory: 64M
+          memory: 96M
 
   # Service B - Backend (FastAPI)
   service-b-backend:
@@ -188,9 +197,9 @@ services:
     deploy:
       resources:
         limits:
-          memory: 512M
+          memory: 768M
         reservations:
-          memory: 256M
+          memory: 384M
 
   # Service B - Frontend (Nginx)
   service-b-frontend:
@@ -215,9 +224,9 @@ services:
     deploy:
       resources:
         limits:
-          memory: 128M
+          memory: 192M
         reservations:
-          memory: 64M
+          memory: 96M
 
   # ==============
   # 보안 레이어
@@ -255,12 +264,139 @@ services:
     deploy:
       resources:
         limits:
-          memory: 256M
+          memory: 384M
         reservations:
-          memory: 128M
+          memory: 192M
 
-  # Note: Wazuh runs separately due to high resource usage
-  # See: services/wazuh/docker-compose.wazuh.yml
+  # ==============
+  # 보안 모니터링 레이어 (Wazuh SIEM)
+  # ==============
+  wazuh.manager:
+    image: wazuh/wazuh-manager:4.9.2
+    hostname: wazuh.manager
+    restart: always
+    ulimits:
+      memlock:
+        soft: -1
+        hard: -1
+      nofile:
+        soft: 655360
+        hard: 655360
+    ports:
+      - "1514:1514"
+      - "1515:1515"
+      - "514:514/udp"
+      - "55000:55000"
+    environment:
+      - INDEXER_URL=https://wazuh.indexer:9200
+      - INDEXER_USERNAME=admin
+      - INDEXER_PASSWORD=SecretPassword
+      - FILEBEAT_SSL_VERIFICATION_MODE=full
+      - SSL_CERTIFICATE_AUTHORITIES=/etc/ssl/root-ca.pem
+      - SSL_CERTIFICATE=/etc/ssl/filebeat.pem
+      - SSL_KEY=/etc/ssl/filebeat.key
+      - API_USERNAME=wazuh-wui
+      - API_PASSWORD=MyS3cr37P450r.*-
+    volumes:
+      - wazuh_api_configuration:/var/ossec/api/configuration
+      - wazuh_etc:/var/ossec/etc
+      - wazuh_logs:/var/ossec/logs
+      - wazuh_queue:/var/ossec/queue
+      - wazuh_tmp:/var/ossec/tmp
+      - wazuh_var_multigroups:/var/ossec/var/multigroups
+      - wazuh_integrations:/var/ossec/integrations
+      - wazuh_active_response:/var/ossec/active-response/bin
+      - wazuh_agentless:/var/ossec/agentless
+      - wazuh_wodles:/var/ossec/wodles
+      - filebeat_etc:/etc/filebeat
+      - filebeat_var:/var/lib/filebeat
+      - ./services/wazuh/config/wazuh_indexer_ssl_certs/root-ca-manager.pem:/etc/ssl/root-ca.pem
+      - ./services/wazuh/config/wazuh_indexer_ssl_certs/wazuh.manager.pem:/etc/ssl/filebeat.pem
+      - ./services/wazuh/config/wazuh_indexer_ssl_certs/wazuh.manager-key.pem:/etc/ssl/filebeat.key
+     # - ./services/wazuh/config/wazuh_cluster/wazuh_manager.conf:/var/ossec/etc/ossec.conf:ro
+      - service-a-logs:/var/ossec/logs/nginx/service-a:ro
+      - service-b-logs:/var/ossec/logs/nginx/service-b:ro
+    networks:
+      - wazuh_internal
+      - backend
+    deploy:
+      resources:
+        limits:
+          memory: 2048M
+        reservations:
+          memory: 1024M
+
+  wazuh.indexer:
+    image: wazuh/wazuh-indexer:4.9.2
+    hostname: wazuh.indexer
+    restart: always
+    ports:
+      - "9200:9200"
+    environment:
+      # JVM 힙 1GB + direct memory 512MB → 컨테이너 limit 3072MB
+      - "OPENSEARCH_JAVA_OPTS=-Xms1g -Xmx1g -XX:MaxDirectMemorySize=512m"
+    ulimits:
+      memlock:
+        soft: -1
+        hard: -1
+      nofile:
+        soft: 65536
+        hard: 65536
+    volumes:
+      - wazuh-indexer-data:/var/lib/wazuh-indexer
+      - ./services/wazuh/config/wazuh_indexer_ssl_certs/root-ca.pem:/usr/share/wazuh-indexer/certs/root-ca.pem
+      - ./services/wazuh/config/wazuh_indexer_ssl_certs/wazuh.indexer-key.pem:/usr/share/wazuh-indexer/certs/wazuh.indexer.key
+      - ./services/wazuh/config/wazuh_indexer_ssl_certs/wazuh.indexer.pem:/usr/share/wazuh-indexer/certs/wazuh.indexer.pem
+      - ./services/wazuh/config/wazuh_indexer_ssl_certs/admin.pem:/usr/share/wazuh-indexer/certs/admin.pem
+      - ./services/wazuh/config/wazuh_indexer_ssl_certs/admin-key.pem:/usr/share/wazuh-indexer/certs/admin-key.pem
+      - ./services/wazuh/config/wazuh_indexer/wazuh.indexer.yml:/usr/share/wazuh-indexer/opensearch.yml
+      - ./services/wazuh/config/wazuh_indexer/internal_users.yml:/usr/share/wazuh-indexer/opensearch-security/internal_users.yml
+    networks:
+      - wazuh_internal
+    deploy:
+      resources:
+        limits:
+          memory: 3072M
+        reservations:
+          memory: 1536M
+
+  wazuh.dashboard:
+    image: wazuh/wazuh-dashboard:4.9.2
+    hostname: wazuh.dashboard
+    restart: always
+    ports:
+      - "8443:5601"
+    environment:
+      - INDEXER_USERNAME=admin
+      - INDEXER_PASSWORD=SecretPassword
+      - WAZUH_API_URL=https://wazuh.manager
+      - DASHBOARD_USERNAME=kibanaserver
+      - DASHBOARD_PASSWORD=kibanaserver
+      - API_USERNAME=wazuh-wui
+      - API_PASSWORD=MyS3cr37P450r.*-
+    volumes:
+      - ./services/wazuh/config/wazuh_indexer_ssl_certs/wazuh.dashboard.pem:/usr/share/wazuh-dashboard/certs/wazuh-dashboard.pem
+      - ./services/wazuh/config/wazuh_indexer_ssl_certs/wazuh.dashboard-key.pem:/usr/share/wazuh-dashboard/certs/wazuh-dashboard-key.pem
+      - ./services/wazuh/config/wazuh_indexer_ssl_certs/root-ca.pem:/usr/share/wazuh-dashboard/certs/root-ca.pem
+      - ./services/wazuh/config/wazuh_dashboard/opensearch_dashboards.yml:/usr/share/wazuh-dashboard/config/opensearch_dashboards.yml
+      - ./services/wazuh/config/wazuh_dashboard/wazuh.yml:/usr/share/wazuh-dashboard/data/wazuh/config/wazuh.yml
+      - wazuh-dashboard-config:/usr/share/wazuh-dashboard/data/wazuh/config
+      - wazuh-dashboard-custom:/usr/share/wazuh-dashboard/plugins/wazuh/public/assets/custom
+    depends_on:
+      - wazuh.indexer
+    links:
+      - wazuh.indexer:wazuh.indexer
+      - wazuh.manager:wazuh.manager
+    networks:
+      - wazuh_internal
+      - frontend
+      - backend
+    deploy:
+      resources:
+        limits:
+          memory: 1024M
+        reservations:
+          memory: 512M
 
   # ===================
   # 관측 레이어
@@ -277,17 +413,17 @@ services:
     command:
       - '--config.file=/etc/prometheus/prometheus.yml'
       - '--storage.tsdb.path=/prometheus'
-      - '--storage.tsdb.retention.time=7d'
-      - '--storage.tsdb.retention.size=1GB'
+      - '--storage.tsdb.retention.time=15d'
+      - '--storage.tsdb.retention.size=2GB'
       - '--web.enable-lifecycle'
     networks:
       - backend
     deploy:
       resources:
         limits:
-          memory: 512M
+          memory: 768M
         reservations:
-          memory: 256M
+          memory: 384M
 
   grafana:
     image: grafana/grafana:10.2.2
@@ -310,9 +446,9 @@ services:
     deploy:
       resources:
         limits:
-          memory: 384M
+          memory: 512M
         reservations:
-          memory: 192M
+          memory: 256M
 
   # Exporters for metrics collection
   node-exporter:
@@ -333,9 +469,9 @@ services:
     deploy:
       resources:
         limits:
-          memory: 96M
+          memory: 128M
         reservations:
-          memory: 48M
+          memory: 64M
 
   postgres-exporter:
     image: prometheuscommunity/postgres-exporter:v0.15.0
@@ -352,9 +488,9 @@ services:
     deploy:
       resources:
         limits:
-          memory: 96M
+          memory: 128M
         reservations:
-          memory: 48M
+          memory: 64M
 
   redis-exporter:
     image: oliver006/redis_exporter:v1.55.0
@@ -371,9 +507,9 @@ services:
     deploy:
       resources:
         limits:
-          memory: 96M
+          memory: 128M
         reservations:
-          memory: 48M
+          memory: 64M
 
 networks:
   frontend:
@@ -381,6 +517,8 @@ networks:
   backend:
     driver: bridge
   db:
+    driver: bridge
+  wazuh_internal:
     driver: bridge
 
 volumes:
@@ -393,3 +531,18 @@ volumes:
   grafana_data:
   service-a-logs:
   service-b-logs:
+  wazuh_api_configuration:
+  wazuh_etc:
+  wazuh_logs:
+  wazuh_queue:
+  wazuh_tmp:
+  wazuh_var_multigroups:
+  wazuh_integrations:
+  wazuh_active_response:
+  wazuh_agentless:
+  wazuh_wodles:
+  filebeat_etc:
+  filebeat_var:
+  wazuh-indexer-data:
+  wazuh-dashboard-config:
+  wazuh-dashboard-custom:
