@@ -339,7 +339,9 @@ jobs:
             sudo chown -R deploy-bot:developers /opt/exit8/self-managed-infrastructure
             git config --global --add safe.directory /opt/exit8/self-managed-infrastructure
 
-            # Pull latest code
+            # Pull latest code (reset first to handle local changes)
+            git fetch origin
+            git reset --hard origin/main
             git pull origin main
 
             # ===================================
