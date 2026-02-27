@@ -411,8 +411,6 @@ volumes:
   wazuh_active_response:
   wazuh_agentless:
   wazuh_wodles:
-  filebeat_etc:
-  filebeat_var:
   wazuh-indexer-data:
   wazuh-dashboard-config:
   wazuh-dashboard-custom:

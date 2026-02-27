@@ -153,7 +153,7 @@ resource "google_compute_instance" "exit8_vm" {
 
   # Metadata for startup script and instance info
   metadata = {
-    enable-oslogin = "TRUE"
+    enable-oslogin = "FALSE"
     # Startup script will be added via Ansible
     startup-script = <<-EOF
       #!/bin/bash

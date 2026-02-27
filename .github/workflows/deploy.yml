@@ -321,11 +321,13 @@ jobs:
             cd "$REPO_DIR" || { echo "Error: $REPO_DIR not found"; exit 1; }
             echo "Current directory: $(pwd)"
 
+
             # ===================================
             # Pull latest code via HTTPS token
             # ===================================
             git config --global --add safe.directory "$REPO_DIR"
             git remote set-url origin "https://oauth2:${GH_TOKEN}@github.com/exit8-ktcloud/self-managed-infrastructure.git"
+
             git pull origin main
             git remote set-url origin "https://github.com/exit8-ktcloud/self-managed-infrastructure.git"
             echo "✓ Code updated"
