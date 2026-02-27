@@ -71,6 +71,8 @@ services:
       DATABASE_NAME: ${DATABASE_NAME:-exit8_app}
       DATABASE_USER: ${DATABASE_USER:-exit8_app_user}
       DATABASE_PASSWORD: ${DATABASE_PASSWORD}
+      # Override datasource URL: sslmode=require only (ssl=true legacy param caused 08001 handshake error)
+      SPRING_DATASOURCE_URL: "jdbc:postgresql://${DATABASE_HOST:-10.101.0.3}:${DATABASE_PORT:-5432}/${DATABASE_NAME:-exit8_app}?sslmode=require"
       # GCP Memorystore Redis
       REDIS_HOST: ${REDIS_HOST:-10.101.1.3}
       REDIS_PORT: ${REDIS_PORT:-6379}
