@@ -128,21 +128,21 @@ function StatusChip({ title, value, sub, tone }) {
   );
 }
 
-function ToggleChip({ enabled, busy, onClick }) {
+function ToggleChip({ title, enabled, busy, onClick, ariaLabel, sub }) {
   return (
     <button
       type="button"
       className={`chip chip--toggle ${enabled ? 'chip--ok' : 'chip--danger'}`}
       onClick={onClick}
       disabled={busy}
-      aria-label="Toggle rate limit"
+      aria-label={ariaLabel || `Toggle ${title || 'feature'}`}
     >
       <div className="chip__top">
         <span className="chip__dot" aria-hidden />
-        <span className="chip__title">Rate Limit</span>
+        <span className="chip__title">{title}</span>
       </div>
       <div className="chip__value">{enabled ? 'ON' : 'OFF'}</div>
-      <div className="chip__sub">{busy ? 'toggling…' : 'click to toggle'}</div>
+      <div className="chip__sub">{busy ? 'toggling…' : sub || 'click to toggle'}</div>
     </button>
   );
 }
@@ -354,7 +354,8 @@ export default function LoadTestDashboard() {
   const [snapshot, setSnapshot] = useState(null);
   const [snapshotHistory, setSnapshotHistory] = useState([]);
   const [events, setEvents] = useState([]);
-  const [toggleBusy, setToggleBusy] = useState(false);
+  const [rateToggleBusy, setRateToggleBusy] = useState(false);
+  const [redisToggleBusy, setRedisToggleBusy] = useState(false);
   const [error, setError] = useState(null);
 
   // Poll snapshot
@@ -425,15 +426,28 @@ export default function LoadTestDashboard() {
   const ipSummary = useMemo(() => buildIpSummary(events), [events]);
 
   const onToggleRateLimit = async () => {
-    setToggleBusy(true);
+    setRateToggleBusy(true);
     try {
       const data = await fetchDefaultData('/api/system/rate-limit/toggle', { method: 'POST' });
-      setSnapshot((prev) => (prev ? { ...prev, rateLimitEnabled: data?.rateLimitEnabled } : prev));
+      setSnapshot((prev) => (prev ? { ...prev, rateLimitEnabled: data?.toggleEnabled } : prev));
       setError(null);
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     } finally {
-      setToggleBusy(false);
+      setRateToggleBusy(false);
+    }
+  };
+
+  const onToggleRedisCache = async () => {
+    setRedisToggleBusy(true);
+    try {
+      const data = await fetchDefaultData('/api/system/redis-cache/toggle', { method: 'POST' });
+      setSnapshot((prev) => (prev ? { ...prev, redisCacheEnabled: data?.toggleEnabled } : prev));
+      setError(null);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setRedisToggleBusy(false);
     }
   };
 
@@ -449,7 +463,21 @@ export default function LoadTestDashboard() {
 
       <section className="obs__top" aria-label="System status bar">
         <StatusChip tone={cb.tone} title="Circuit Breaker" value={cb.label} />
-        <ToggleChip enabled={!!snapshot?.rateLimitEnabled} onClick={onToggleRateLimit} busy={toggleBusy} />
+        <ToggleChip
+          title="Rate Limit"
+          enabled={!!snapshot?.rateLimitEnabled}
+          onClick={onToggleRateLimit}
+          busy={rateToggleBusy}
+          ariaLabel="Toggle rate limit"
+        />
+        <ToggleChip
+          title="Redis Cache"
+          enabled={!!snapshot?.redisCacheEnabled}
+          onClick={onToggleRedisCache}
+          busy={redisToggleBusy}
+          ariaLabel="Toggle redis cache"
+          sub={snapshot?.cacheHitRatio != null ? `hit ${(snapshot.cacheHitRatio * 100).toFixed(1)}%` : undefined}
+        />
         <StatusChip
           tone={dbPct >= 90 ? 'danger' : dbPct >= 70 ? 'warn' : 'ok'}
           title="DB Pool"
