@@ -44,63 +44,53 @@ jobs:
           echo "Changed files:"
           echo "$CHANGED"
 
-          # Check service-a-backend
           if echo "$CHANGED" | grep -q "^services/service-a/backend/"; then
             echo "service-a-backend=true" >> $GITHUB_OUTPUT
           else
             echo "service-a-backend=false" >> $GITHUB_OUTPUT
           fi
 
-          # Check service-a-frontend
           if echo "$CHANGED" | grep -q "^services/service-a/frontend/"; then
             echo "service-a-frontend=true" >> $GITHUB_OUTPUT
           else
             echo "service-a-frontend=false" >> $GITHUB_OUTPUT
           fi
 
-          # Check service-b-backend
           if echo "$CHANGED" | grep -q "^services/service-b/backend/"; then
             echo "service-b-backend=true" >> $GITHUB_OUTPUT
           else
             echo "service-b-backend=false" >> $GITHUB_OUTPUT
           fi
 
-          # Check service-b-frontend
           if echo "$CHANGED" | grep -q "^services/service-b/frontend/"; then
             echo "service-b-frontend=true" >> $GITHUB_OUTPUT
           else
             echo "service-b-frontend=false" >> $GITHUB_OUTPUT
           fi
 
-          # Check infra services (npm, prometheus, grafana, wazuh)
           INFRA_CHANGED="false"
           CHANGED_SERVICES=""
 
-          # Check npm
           if echo "$CHANGED" | grep -qE "^services/npm/(Dockerfile|.*\.(yml|yaml|conf|json|hcl)$|config/|custom/)"; then
             INFRA_CHANGED="true"
             CHANGED_SERVICES="${CHANGED_SERVICES}nginx-proxy-manager,"
           fi
 
-          # Check prometheus
           if echo "$CHANGED" | grep -qE "^services/prometheus/(Dockerfile|.*\.(yml|yaml|conf|json|hcl)$|config/)"; then
             INFRA_CHANGED="true"
             CHANGED_SERVICES="${CHANGED_SERVICES}prometheus,"
           fi
 
-          # Check grafana
           if echo "$CHANGED" | grep -qE "^services/grafana/(Dockerfile|.*\.(yml|yaml|conf|json|hcl)$|config/|provisioning/|dashboards/)"; then
             INFRA_CHANGED="true"
             CHANGED_SERVICES="${CHANGED_SERVICES}grafana,"
           fi
 
-          # Check wazuh
           if echo "$CHANGED" | grep -qE "^services/wazuh/(Dockerfile|.*\.(yml|yaml|conf|json|hcl)$|config/)"; then
             INFRA_CHANGED="true"
-            CHANGED_SERVICES="${CHANGED_SERVICES}wazuh,"
+            CHANGED_SERVICES="${CHANGED_SERVICES}wazuh.manager,wazuh.indexer,wazuh.dashboard,"
           fi
 
-          # Check docker-compose.yml changes
           if echo "$CHANGED" | grep -q "^docker-compose.yml$"; then
             INFRA_CHANGED="true"
             echo "docker-compose-changed=true" >> $GITHUB_OUTPUT
@@ -111,7 +101,6 @@ jobs:
           echo "infra=${INFRA_CHANGED}" >> $GITHUB_OUTPUT
           echo "changed-infra-services=${CHANGED_SERVICES%,}" >> $GITHUB_OUTPUT
 
-          # Check if any app service changed
           if echo "$CHANGED" | grep -qE "^services/service-(a|b)/(backend|frontend)/"; then
             echo "any-app-changed=true" >> $GITHUB_OUTPUT
           else
@@ -290,10 +279,10 @@ jobs:
           cache-to: type=gha,mode=max
 
   # ====================
-  # Deploy to Server (GCP Secret Manager)
+  # Deploy to GCP VM
   # ====================
   deploy:
-    name: Deploy to Server
+    name: Deploy to GCP VM
     runs-on: ubuntu-latest
     needs: [detect-changes, build-service-a-backend, build-service-a-frontend, build-service-b-backend, build-service-b-frontend]
     if: |
@@ -317,72 +306,61 @@ jobs:
           INFRA_CHANGED: ${{ needs.detect-changes.outputs.infra }}
           CHANGED_INFRA_SERVICES: ${{ needs.detect-changes.outputs.changed-infra-services }}
           DOCKER_COMPOSE_CHANGED: ${{ needs.detect-changes.outputs.docker-compose-changed }}
-          # GCP Secrets (fetched from GitHub Actions Secrets)
-          DATABASE_PASSWORD: ${{ secrets.DATABASE_PASSWORD }}
-          GRAFANA_PASSWORD: ${{ secrets.GRAFANA_PASSWORD }}
-          WAZUH_INDEXER_PASSWORD: ${{ secrets.WAZUH_INDEXER_PASSWORD }}
-          WAZUH_API_PASSWORD: ${{ secrets.WAZUH_API_PASSWORD }}
-          WAZUH_DASHBOARD_PASSWORD: ${{ secrets.WAZUH_DASHBOARD_PASSWORD }}
+          GH_TOKEN: ${{ secrets.GH_DEPLOY_TOKEN }}
         with:
           host: ${{ secrets.SERVER_HOST }}
           username: ${{ secrets.SERVER_USER }}
           key: ${{ secrets.SERVER_SSH_KEY }}
-          envs: SERVICE_A_BACKEND,SERVICE_A_FRONTEND,SERVICE_B_BACKEND,SERVICE_B_FRONTEND,INFRA_CHANGED,CHANGED_INFRA_SERVICES,DOCKER_COMPOSE_CHANGED,DATABASE_PASSWORD,GRAFANA_PASSWORD,WAZUH_INDEXER_PASSWORD,WAZUH_API_PASSWORD,WAZUH_DASHBOARD_PASSWORD
+          envs: SERVICE_A_BACKEND,SERVICE_A_FRONTEND,SERVICE_B_BACKEND,SERVICE_B_FRONTEND,INFRA_CHANGED,CHANGED_INFRA_SERVICES,DOCKER_COMPOSE_CHANGED,GH_TOKEN
           script: |
             set -e
 
+            REPO_DIR="/opt/exit8/self-managed-infrastructure"
+
             # Navigate to project directory
-            cd /opt/exit8/self-managed-infrastructure || { echo "Error: directory not found"; exit 1; }
+            cd "$REPO_DIR" || { echo "Error: $REPO_DIR not found"; exit 1; }
             echo "Current directory: $(pwd)"
 
-            # Fix permissions
-            sudo chown -R deploy-bot:developers /opt/exit8/self-managed-infrastructure
-            git config --global --add safe.directory /opt/exit8/self-managed-infrastructure
-
-            # Pull latest code
+            # ===================================
+            # Pull latest code via HTTPS token
+            # ===================================
+            git config --global --add safe.directory "$REPO_DIR"
+            git remote set-url origin "https://oauth2:${GH_TOKEN}@github.com/exit8-ktcloud/self-managed-infrastructure.git"
             git pull origin main
+            git remote set-url origin "https://github.com/exit8-ktcloud/self-managed-infrastructure.git"
+            echo "✓ Code updated"
 
             # ===================================
-            # Update .env with secrets from GCP Secret Manager
+            # Refresh secrets from GCP Secret Manager
+            # (VM Service Account has secretAccessor role)
             # ===================================
-            # Backup .env if it exists
+            echo "Refreshing secrets from GCP Secret Manager..."
+
             if [ -f ".env" ]; then
               cp .env .env.backup.$(date +%Y%m%d_%H%M%S)
-              echo "✓ .env backed up"
             fi
 
-            # Create/update .env with secrets from GitHub Actions
-            cat > .env << EOF
-            # Database (Cloud SQL)
-            DATABASE_HOST=10.101.0.3
-            DATABASE_PORT=5432
-            DATABASE_NAME=exit8_app
-            DATABASE_USER=exit8_app_user
-            DATABASE_PASSWORD=${DATABASE_PASSWORD}
+            DB_PASSWORD=$(gcloud secrets versions access latest --secret="exit8-db-password" 2>/dev/null || echo "")
+            if [ -n "$DB_PASSWORD" ]; then
+              sed -i "s|DATABASE_PASSWORD=.*|DATABASE_PASSWORD=${DB_PASSWORD}|" .env
+              echo "✓ DATABASE_PASSWORD refreshed from GCP Secret Manager"
+            else
+              echo "⚠ Could not fetch DATABASE_PASSWORD, using existing .env value"
+            fi
 
-            # Redis (Memorystore)
-            REDIS_HOST=10.101.1.3
-            REDIS_PORT=6379
-
-            # Grafana
-            GRAFANA_USER=admin
-            GRAFANA_PASSWORD=${GRAFANA_PASSWORD}
-
-            # Wazuh
-            WAZUH_INDEXER_PASSWORD=${WAZUH_INDEXER_PASSWORD}
-            WAZUH_API_PASSWORD=${WAZUH_API_PASSWORD}
-            WAZUH_DASHBOARD_PASSWORD=${WAZUH_DASHBOARD_PASSWORD}
-            EOF
-
-            echo "✓ .env updated with secrets"
+            # Verify docker-compose.yml exists
+            if [ ! -f "docker-compose.yml" ]; then
+              echo "Error: docker-compose.yml not found"
+              exit 1
+            fi
 
             # ===================================
             # Save current image tags for rollback
             # ===================================
             echo "Saving current image tags for potential rollback..."
-            ROLLBACK_FILE="/tmp/rollback_tags_${GITHUB_SHA}.txt"
+            ROLLBACK_FILE="/tmp/rollback_tags_$(date +%s).txt"
             > "$ROLLBACK_FILE"
-            
+
             for service in service-a-backend service-a-frontend service-b-backend service-b-frontend; do
               if docker ps --format '{{.Names}}' | grep -q "^${service}$"; then
                 CURRENT_IMAGE=$(docker inspect --format='{{.Config.Image}}' "$service" 2>/dev/null || echo "")
@@ -395,7 +373,7 @@ jobs:
             echo "✓ Current image tags saved"
 
             # ===================================
-            # Pull and Deploy Services
+            # Pull updated images
             # ===================================
             SERVICES_TO_UPDATE=""
 
@@ -423,43 +401,36 @@ jobs:
               SERVICES_TO_UPDATE="${SERVICES_TO_UPDATE} service-b-frontend"
             fi
 
-            # Add changed infra services
             if [ "$INFRA_CHANGED" == "true" ] && [ -n "$CHANGED_INFRA_SERVICES" ]; then
               echo "Changed infra services: $CHANGED_INFRA_SERVICES"
               INFRA_SERVICES=$(echo "$CHANGED_INFRA_SERVICES" | tr ',' ' ')
               SERVICES_TO_UPDATE="${SERVICES_TO_UPDATE} ${INFRA_SERVICES}"
             fi
 
-            # Trim whitespace
             SERVICES_TO_UPDATE=$(echo "$SERVICES_TO_UPDATE" | xargs)
-
-            echo "Docker Compose version:"
-            docker compose version || echo "docker compose not found"
             echo "Services to update: '${SERVICES_TO_UPDATE}'"
 
+            # ===================================
             # Deploy
+            # ===================================
             if [ "$DOCKER_COMPOSE_CHANGED" == "true" ]; then
               echo "docker-compose.yml changed - restarting all services..."
               docker compose down
               docker container prune -f
               docker compose up -d --remove-orphans
             elif [ -z "$SERVICES_TO_UPDATE" ]; then
-              echo "No specific services to update. Checking container status..."
+              echo "No specific services to update. Ensuring containers are running..."
               docker compose up -d
             else
               echo "Updating specific services: $SERVICES_TO_UPDATE"
               docker compose stop $SERVICES_TO_UPDATE
               docker compose rm -f $SERVICES_TO_UPDATE
-
               for service in $SERVICES_TO_UPDATE; do
-                echo "Force removing container if exists: $service"
                 docker rm -f $service 2>/dev/null || true
               done
-
               docker compose up -d --no-deps $SERVICES_TO_UPDATE
             fi
 
-            # Cleanup old images
             docker image prune -f
 
             # ===================================
@@ -469,14 +440,14 @@ jobs:
             MAX_RETRIES=15
             RETRY_INTERVAL=5
 
-            echo "Waiting for services to be ready..."
+            echo "Waiting for services (polling every ${RETRY_INTERVAL}s, max $((MAX_RETRIES * RETRY_INTERVAL))s)..."
 
             check_service_health() {
               local service=$1
               local health_url=$2
               local use_docker_exec=$3
               local retries=0
-              
+
               while [ $retries -lt $MAX_RETRIES ]; do
                 if [ "$use_docker_exec" == "true" ]; then
                   if docker exec "$service" curl -sf "$health_url" > /dev/null 2>&1; then
@@ -493,14 +464,12 @@ jobs:
                 echo "  Waiting for $service... ($retries/$MAX_RETRIES)"
                 sleep $RETRY_INTERVAL
               done
-              
+
               echo "  ✗ $service health check failed after $MAX_RETRIES attempts"
               return 1
             }
 
-            # Check services based on what changed
             if [ "$DOCKER_COMPOSE_CHANGED" == "true" ]; then
-              echo "Health check for all services..."
               check_service_health "service-a-backend" "http://localhost:8080/actuator/health" "true" || HEALTH_CHECK_FAILED=true
               check_service_health "service-b-backend" "http://localhost:8000/health" "true" || HEALTH_CHECK_FAILED=true
               check_service_health "service-a-frontend" "http://localhost:3000/health" "false" || HEALTH_CHECK_FAILED=true
@@ -525,32 +494,26 @@ jobs:
             # ===================================
             if [ "$HEALTH_CHECK_FAILED" == "true" ]; then
               echo "❌ Health check failed! Initiating rollback..."
-              
+
               if [ -f "$ROLLBACK_FILE" ] && [ -s "$ROLLBACK_FILE" ]; then
                 echo "Rolling back to previous image versions..."
-                
                 while IFS='=' read -r service image; do
                   if [ -n "$service" ] && [ -n "$image" ]; then
                     echo "  Rolling back $service to $image"
                     docker pull "$image" || true
-                    docker stop "$service" 2>/dev/null || true
-                    docker rm -f "$service" 2>/dev/null || true
                     docker compose up -d --no-deps --force-recreate "$service" 2>/dev/null || true
                   fi
                 done < "$ROLLBACK_FILE"
-                
                 echo "⚠ Rollback attempted. Manual verification may be required."
               else
-                echo "⚠ No previous image tags found. Cannot rollback automatically."
+                echo "⚠ No rollback data. Restarting with docker compose..."
                 docker compose up -d --force-recreate
               fi
-              
+
               exit 1
             fi
 
-            # Cleanup rollback file on success
             rm -f "$ROLLBACK_FILE"
-
             echo "✅ Deployment completed successfully"
             if [ "$DOCKER_COMPOSE_CHANGED" == "true" ]; then
               echo "All services restarted due to docker-compose.yml change"

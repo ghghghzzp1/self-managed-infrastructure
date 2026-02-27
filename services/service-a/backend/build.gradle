@@ -38,7 +38,7 @@ bootRun {
     // Spring Profile (기본값: local)
     environment "SPRING_PROFILES_ACTIVE",
             System.getenv("SPRING_PROFILES_ACTIVE") ?: "local"
-
+}
 
 dependencies {
     // Web & AOP
