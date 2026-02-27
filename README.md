@@ -1,6 +1,79 @@
 # Exit8 Project
 
-GCP 기반 All-in-one 보안 플랫폼 구축
+GCP 기반 All-in-one 보안 플랫폼 - Terraform + Ansible IaC 구축
+
+## Architecture Overview
+
+```
+                    ┌─────────────────────────────────────────────────────────────┐
+                    │                    GCP (asia-northeast3)                     │
+                    │                                                             │
+   Internet         │  ┌─────────────────┐     ┌─────────────────────────────┐ │
+   ────────► Cloud  │  │  HTTPS LB       │     │      Compute Engine         │ │
+            Armor   │  │  34.128.162.9   │────►│  e2-standard-4 (16GB/4vCPU) │ │
+                    │  └─────────────────┘     │  34.64.160.98               │ │
+                    │                          │                             │ │
+                    │                          │  ┌───────────────────────┐  │ │
+                    │                          │  │  Docker Compose        │  │ │
+                    │                          │  │  ├─ service-a (Spring) │  │ │
+                    │                          │  │  ├─ service-b (FastAPI)│  │ │
+                    │                          │  │  ├─ Nginx Proxy Mgr    │  │ │
+                    │                          │  │  ├─ Prometheus         │  │ │
+                    │                          │  │  ├─ Grafana            │  │ │
+                    │                          │  │  └─ Wazuh SIEM         │  │ │
+                    │                          │  └───────────────────────┘  │ │
+                    │                          └──────────────┬──────────────┘ │
+                    │                                         │                │
+                    │  ┌─────────────────┐    ┌──────────────┴──────────────┐ │
+                    │  │ Memorystore     │    │  Private Service Access     │ │
+                    │  │ Redis 7.0 (1GB) │◄───│  10.101.0.0/16              │ │
+                    │  │ 10.101.1.3:6379 │    └──────────────┬──────────────┘ │
+                    │  └─────────────────┘                   │                │
+                    │                                        │                │
+                    │                          ┌──────────────┴──────────────┐ │
+                    │                          │  Cloud SQL (PostgreSQL 15)  │ │
+                    │                          │  db-custom-2-8192           │ │
+                    │                          │  10.101.0.3:5432            │ │
+                    │                          └─────────────────────────────┘ │
+                    │                                                             │
+                    └─────────────────────────────────────────────────────────────┘
+```
+
+## GCP Managed Services
+
+| Service | Tier | Private IP | Purpose |
+|---------|------|------------|---------|
+| **Cloud SQL** | db-custom-2-8192 (2 vCPU, 8GB) | 10.101.0.3:5432 | PostgreSQL 15 Database |
+| **Memorystore** | Basic 1GB | 10.101.1.3:6379 | Redis 7.0 Cache |
+| **Compute Engine** | e2-standard-4 | 10.0.0.2 | Docker Host |
+| **Cloud Armor** | Standard | - | WAF/DDoS Protection |
+| **HTTPS LB** | Global | 34.128.162.9 | SSL Termination |
+| **Secret Manager** | - | - | Secrets Management |
+
+## Cache Architecture (2-Tier)
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                    Application Layer                        │
+│                                                             │
+│  ┌─────────────────┐                                        │
+│  │ L1: Caffeine    │  TTL: 60s, Max: 1000 entries           │
+│  │ (In-Memory)     │  Hit Ratio: ~90% (hot data)            │
+│  └────────┬────────┘                                        │
+│           │ Miss                                             │
+│           ▼                                                 │
+│  ┌─────────────────┐                                        │
+│  │ L2: Redis       │  TTL: 300s                             │
+│  │ (Memorystore)   │  Hit Ratio: ~80% (warm data)           │
+│  └────────┬────────┘                                        │
+│           │ Miss                                             │
+│           ▼                                                 │
+│  ┌─────────────────┐                                        │
+│  │ PostgreSQL      │  Source of Truth                       │
+│  │ (Cloud SQL)     │                                        │
+│  └─────────────────┘                                        │
+└─────────────────────────────────────────────────────────────┘
+```
 
 ## Server Specs
 
@@ -8,154 +81,98 @@ GCP 기반 All-in-one 보안 플랫폼 구축
 |------|------|
 | CPU | 4 vCPU |
 | Memory | 16 GB |
-| Platform | GCP (e2-standard-4) |
-
-**메모리 할당 (docker-compose.yml 기준):**
-
-| 레이어 | 서비스 | Memory Limit |
-|--------|--------|-------------|
-| Wazuh SIEM | manager + indexer + dashboard | 2048M + 3072M + 1024M |
-| 데이터 | postgres + redis | 1536M + 512M |
-| 애플리케이션 | svc-a + svc-b (backend + frontend) | 1024M + 192M + 768M + 192M |
-| 인프라/관측 | npm + vault + prometheus + grafana | 512M + 384M + 768M + 512M |
-| Exporters | node + postgres + redis | 128M × 3 |
-| **합계** | | **~12.6 GB** (시스템 예약 ~3.4 GB) |
-
-## Architecture Overview
-
-```
-User → Nginx Proxy Manager → Frontend / Backend Services
-                                    ↓
-                         PostgreSQL / Redis
-                                    ↓
-                    Vault (Secrets) / Wazuh (Security)
-                                    ↓
-                    Prometheus / Grafana (Observability)
-```
-
-## Quick Start
-
-```bash
-# 1. 환경변수 설정
-cp .env.example .env
-# .env 파일을 열어 비밀번호 변경
-
-# 2. 서비스 실행
-docker-compose up -d
-
-# 3. 접속
-# - Nginx Proxy Manager Admin: http://localhost:81
-#   (초기 계정: admin@example.com / changeme)
-```
-
-## Project Structure
-
-```
-exit8/
-├── docker-compose.yml
-├── docker-compose.local.yml  # 로컬 개발용
-├── .env.example
-├── .github/
-│   ├── workflows/
-│   │   ├── ci.yml          # Build & Test
-│   │   ├── deploy.yml      # Deploy
-│   │   └── security.yml    # Vulnerability Scan
-│   ├── dependabot.yml      # Auto dependency updates
-│   └── CODEOWNERS
-├── docs/
-│   └── BUILD_GUIDE.md      # 빌드 가이드
-├── services/
-│   ├── service-a/          # Service A (분리된 구조)
-│   │   ├── backend/        # Spring Boot (Java 17)
-│   │   │   └── Dockerfile  # exit8/service-a-backend
-│   │   └── frontend/       # Nginx + Static
-│   │       └── Dockerfile  # exit8/service-a-frontend
-│   ├── service-b/          # Service B (분리된 구조)
-│   │   ├── backend/        # FastAPI (Python 3.11)
-│   │   │   └── Dockerfile  # exit8/service-b-backend
-│   │   └── frontend/       # Nginx + Static
-│   │       └── Dockerfile  # exit8/service-b-frontend
-│   ├── npm/                # Nginx Proxy Manager 설정
-│   ├── vault/              # HashiCorp Vault
-│   ├── wazuh/              # Wazuh SIEM
-│   ├── prometheus/         # Metrics Collector
-│   └── grafana/            # Visualization
-└── README.md
-```
+| Platform | GCP Compute Engine (e2-standard-4) |
+| Disk | 100 GB SSD |
+| Region | asia-northeast3 (Seoul) |
 
 ## Services
 
-| Service | Port | Image | Description |
-|---------|------|-------|-------------|
-| Nginx Proxy Manager | 80, 443, 81 | jc21/nginx-proxy-manager | Reverse Proxy / SSL |
-| Service-A Backend | 8080 (internal) | exit8/service-a-backend | Spring Boot API |
-| Service-A Frontend | 3000 → 8080 | exit8/service-a-frontend | Nginx + React + Vite |
-| Service-B Backend | 8000 (internal) | exit8/service-b-backend | FastAPI API |
-| Service-B Frontend | 3002 → 8080 | exit8/service-b-frontend | Nginx + React + Vite |
-| PostgreSQL | 5432 | postgres:15-alpine | Database |
-| Redis | 6379 | redis:7-alpine | Cache |
-| Vault | 8200 | hashicorp/vault | Secrets Management |
-| Wazuh Manager | 1514, 1515, 55000 | wazuh/wazuh-manager | SIEM Agent 수신 |
-| Wazuh Dashboard | 8443 → 5601 | wazuh/wazuh-dashboard | SIEM Web UI |
-| Prometheus | 9090 | prom/prometheus | Metrics Collector |
-| Grafana | 3001 | grafana/grafana | Visualization Dashboard |
+| Service | Port | Description |
+|---------|------|-------------|
+| **Nginx Proxy Manager** | 80, 443, 81 | Reverse Proxy / SSL |
+| **Service-A Backend** | 8080 | Spring Boot API (2-Tier Cache) |
+| **Service-A Frontend** | 3000 | React + Vite |
+| **Service-B Backend** | 8000 | FastAPI API |
+| **Service-B Frontend** | 3002 | React + Vite |
+| **Prometheus** | 9090 | Metrics Collector |
+| **Grafana** | 3001 | Visualization Dashboard |
+| **Wazuh Manager** | 1514, 1515, 55000 | SIEM Agent |
+| **Wazuh Dashboard** | 8443 | SIEM Web UI |
 
-## Vault 초기 설정
+## Quick Start
 
-```bash
-# 1. Vault 초기화 (최초 1회)
-docker exec -it vault vault operator init
-
-# 2. Unseal (3개 키 입력 필요)
-docker exec -it vault vault operator unseal
-
-# 3. 로그인
-docker exec -it vault vault login
-
-# Web UI: http://localhost:8200
-```
-
-## Wazuh SIEM
-
-Wazuh는 메인 `docker-compose.yml`에 통합되어 있습니다. 별도 실행 불필요.
+### Prerequisites
 
 ```bash
-# 메인 docker-compose up -d 로 함께 기동됨
+# gcloud CLI 설치 및 인증
+gcloud auth login
+gcloud config set project thinking-orb-485613-k3
 
-# Dashboard: https://localhost:8443
-# Login: admin / SecretPassword
+# Terraform 설치
+brew install terraform
 ```
 
-> **주의:** Wazuh 인증서 파일이 `services/wazuh/config/wazuh_indexer_ssl_certs/` 경로에 있어야 합니다.
-
-## Observability
+### Infrastructure Deploy
 
 ```bash
-# Prometheus: http://localhost:9090
-# Grafana:    http://localhost:3001
-#   Login: admin / admin (변경 권장)
+# Terraform 초기화 및 적용
+cd infra/terraform
+terraform init
+terraform apply
+
+# SSH로 VM 접속
+gcloud compute ssh exit8-vm --zone=asia-northeast3-a
 ```
 
-**수집 메트릭:**
-- Node Exporter: 호스트 CPU, Memory, Disk
-- Postgres Exporter: DB 연결, 쿼리 통계
-- Redis Exporter: 캐시 히트율, 메모리
+### Application Deploy
 
-**기본 대시보드:**
-- Exit8 System Overview (자동 프로비저닝)
+```bash
+# VM에서 수행
+cd /opt/exit8/self-managed-infrastructure
 
-## NPM (Nginx Proxy Manager) 라우팅
+# Secret Manager에서 비밀번호 가져오기
+DB_PASSWORD=$(gcloud secrets versions access latest --secret=exit8-db-password)
+GRAFANA_PASSWORD=$(gcloud secrets versions access latest --secret=exit8-grafana-admin | jq -r '.admin_password')
 
-NPM Admin UI (`http://localhost:81`)에서 Proxy Host 설정:
+# .env 파일 생성
+cat > .env << EOF
+DATABASE_HOST=10.101.0.3
+DATABASE_PORT=5432
+DATABASE_NAME=exit8_app
+DATABASE_USER=exit8_app_user
+DATABASE_PASSWORD=${DB_PASSWORD}
+REDIS_HOST=10.101.1.3
+REDIS_PORT=6379
+GRAFANA_USER=admin
+GRAFANA_PASSWORD=${GRAFANA_PASSWORD}
+EOF
 
-| Route | Forward Host | Forward Port |
-|-------|-------------|-------------|
-| `/` | service-a-frontend | 8080 |
-| `/api/v1` | service-a-backend | 8080 |
-| `/login` | service-b-frontend | 8080 |
-| `/api/v1` | service-b-backend | 8000 |
+# 서비스 시작
+docker compose up -d
+```
 
-> **Note:** 프론트엔드 컨테이너는 non-root 사용자로 실행되므로 내부 포트가 80 → 8080으로 변경되었습니다. NPM Proxy Host에서 Forward Port를 `8080`으로 설정하세요.
+## Secrets Management
+
+### GCP Secret Manager
+
+| Secret Name | Description |
+|-------------|-------------|
+| `exit8-db-password` | Cloud SQL Password |
+| `exit8-grafana-admin` | Grafana Admin Credentials (JSON) |
+| `exit8-wazuh-credentials` | Wazuh Passwords (JSON) |
+
+### Access Secrets
+
+```bash
+# Cloud SQL 비밀번호
+gcloud secrets versions access latest --secret=exit8-db-password
+
+# Grafana 비밀번호
+gcloud secrets versions access latest --secret=exit8-grafana-admin | jq -r '.admin_password'
+
+# Wazuh 비밀번호
+gcloud secrets versions access latest --secret=exit8-wazuh-credentials | jq -r '.indexer_password'
+```
 
 ## CI/CD Pipeline
 
@@ -163,29 +180,83 @@ NPM Admin UI (`http://localhost:81`)에서 Proxy Host 설정:
 
 | Workflow | Trigger | 설명 |
 |----------|---------|------|
-| Deploy | main push | 변경 서비스 감지 → Docker 이미지 빌드 → Docker Hub 푸시 → SSH 접속 후 변경분 Pull 및 배포 → 헬스체크 |
-| Security | main, weekly | 의존성 취약점, 컨테이너, 시크릿 스캔 |
+| Deploy | main push | 변경 서비스 감지 → Docker 빌드 → SSH 배포 → 헬스체크 |
+| Security | main, weekly | 의존성/컨테이너/시크릿 스캔 |
 
-**분리된 이미지 구조:**
+**GitHub Secrets:**
 
-| 변경 경로 | 빌드되는 이미지 |
-|-----------|----------------|
-| `services/service-a/backend/**` | `exit8/service-a-backend` |
-| `services/service-a/frontend/**` | `exit8/service-a-frontend` |
-| `services/service-b/backend/**` | `exit8/service-b-backend` |
-| `services/service-b/frontend/**` | `exit8/service-b-frontend` |
+| Secret | Description |
+|--------|-------------|
+| `SERVER_HOST` | GCP VM 외부 IP |
+| `SERVER_USER` | SSH 사용자 (deploy-bot) |
+| `SERVER_SSH_KEY` | SSH Private Key |
+| `DOCKER_HUB_TOKEN` | Docker Hub Token |
+| `DATABASE_PASSWORD` | From Secret Manager |
+| `GRAFANA_PASSWORD` | From Secret Manager |
+| `WAZUH_*_PASSWORD` | From Secret Manager |
 
-**배포 시 필요한 GitHub Secrets:**
+## Observability
+
+```bash
+# Prometheus: http://34.64.160.98:9090
+# Grafana:    http://34.64.160.98:3001
+```
+
+**수집 메트릭:**
+- Node Exporter: CPU, Memory, Disk
+- Postgres Exporter: DB 연결, 쿼리 통계
+- Redis Exporter: 캐시 히트율, 메모리
+- Custom: Cache Hit Ratio, Rate Limit
+
+## Estimated Costs
+
+| Service | Cost |
+|---------|------|
+| Cloud SQL | ~$50/month |
+| Memorystore | ~$35/month |
+| Compute Engine | ~$70/month |
+| HTTPS LB + Cloud Armor | ~$20/month |
+| **Total** | **~$175/month (~₩250,000)** |
+
+## Project Structure
 
 ```
-SERVER_HOST       # GCP IP 또는 도메인
-SERVER_USER       # SSH 사용자 (예: ubuntu)
-SERVER_SSH_KEY    # SSH 프라이빗 키
-DOCKER_HUB_TOKEN  # Docker Hub 접근 토큰
+exit8/
+├── infra/
+│   ├── terraform/           # GCP Infrastructure
+│   │   ├── main.tf          # Provider 설정
+│   │   ├── vpc.tf           # VPC + Subnet
+│   │   ├── psa.tf           # Private Service Access
+│   │   ├── cloud_sql.tf     # Cloud SQL
+│   │   ├── memorystore.tf   # Memorystore Redis
+│   │   ├── compute.tf       # Compute Engine
+│   │   ├── load_balancer.tf # HTTPS LB + Cloud Armor
+│   │   ├── monitoring.tf    # Alert Policies
+│   │   └── secrets.tf       # Secret Manager
+│   └── ansible/             # VM Provisioning (optional)
+├── services/
+│   ├── service-a/           # Spring Boot + React
+│   ├── service-b/           # FastAPI + React
+│   ├── npm/                 # Nginx Proxy Manager
+│   ├── prometheus/          # Metrics
+│   ├── grafana/             # Dashboards
+│   └── wazuh/               # SIEM
+├── docker-compose.yml       # Main compose file
+├── .env.example             # Environment template
+└── .github/workflows/       # CI/CD
 ```
 
-**Dependabot:**
-- Python, Gradle, Docker, GitHub Actions 의존성 자동 업데이트
-- 주간 스캔
+## Documentation
 
+- [GCP 접근 가이드](docs/gcp-access-guide.md)
+- [GitHub Actions Secrets](docs/github-actions-secrets.md)
+- [배포 가이드](docs/deploy-gcp.md)
 
+## Migration History
+
+| Date | Change |
+|------|--------|
+| 2026-02-27 | Vault → GCP Secret Manager 완전 이관 |
+| 2026-02-26 | 2-Tier Cache (Caffeine + Redis) 구현 |
+| 2026-02-25 | GCP Managed Services (Cloud SQL, Memorystore) 도입 |
+| 2026-02-24 | Terraform + Ansible IaC 구축 |

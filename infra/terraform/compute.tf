@@ -75,6 +75,23 @@ resource "google_compute_firewall" "allow_ssh" {
 
   target_tags = [var.instance_name]
 }
+resource "google_compute_firewall" "allow_load_test" {
+  name    = "${var.instance_name}-allow-load-test"
+  project = var.project_id
+  network = google_compute_network.exit8-vpc.name
+
+  allow {
+    protocol = "tcp"
+    ports    = ["8082"]
+  }
+
+  # Only allow from load test client IP
+  source_ranges = ["115.23.208.104/32"]
+
+  target_tags = [var.instance_name]
+}
+
+
 
 resource "google_compute_firewall" "allow_internal" {
   name    = "${var.instance_name}-allow-internal"

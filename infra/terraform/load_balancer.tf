@@ -107,7 +107,7 @@ resource "google_compute_managed_ssl_certificate" "exit8_cert" {
   project = var.project_id
 
   managed {
-    domains = ["exit8.example.com"]  # Replace with your domain
+    domains = ["exit8-load-test.duckdns.org", "exit8-security-test.duckdns.org"]
   }
 
   lifecycle {
