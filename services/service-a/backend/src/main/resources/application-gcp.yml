@@ -127,10 +127,10 @@ resilience4j:
     configs:
       default:
         sliding-window-type: COUNT_BASED
-        sliding-window-size: 20
-        minimum-number-of-calls: 15
+        sliding-window-size: 30
+        minimum-number-of-calls: 30
         failure-rate-threshold: 50
-        slow-call-duration-threshold: 2000ms
+        slow-call-duration-threshold: 3000ms
         slow-call-rate-threshold: 50
         wait-duration-in-open-state: 30s
         permitted-number-of-calls-in-half-open-state: 5

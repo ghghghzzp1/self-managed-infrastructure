@@ -19,10 +19,12 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Sort;
 
+import org.springframework.transaction.TransactionDefinition;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.transaction.support.TransactionTemplate;
 
 import java.time.Duration;
+import java.util.List;
 
 @Service
 @RequiredArgsConstructor
@@ -86,55 +88,65 @@ public class LoadScenarioService {
             histogram = true
     )
     @CircuitBreaker(name = CircuitNames.TEST_CIRCUIT)
-    @Transactional(readOnly = true)
     public void simulateDbReadLoad(int repeatCount) {
 
         if (repeatCount <= 0 || repeatCount > MAX_REPEAT) {
-            throw new ApiException(
-                    "INVALID_PARAM",
-                    "repeatCount must be between 1 and 10000",
-                    HttpStatus.BAD_REQUEST
-            );
+            throw new ApiException("INVALID_PARAM", "repeatCount must be between 1 and 10000", HttpStatus.BAD_REQUEST);
         }
-        Pageable pageable = PageRequest.of(0, 20, Sort.by("id").ascending());
 
-        // 요청 시작 시점의 Redis 상태 스냅샷
-        boolean cacheEnabled = runtimeFeatureState.isRedisCacheEnabled();
+        // 요청 시작 시점의 Redis 상태 스냅샷 (요청 도중 토글 흔들림 방지)
+        final boolean cacheEnabled = runtimeFeatureState.isRedisCacheEnabled();
+        // ValueOperations는 루프 밖에서 1회만 획득
+        final var ops = redisTemplate.opsForValue();
+
+        // readOnly 트랜잭션 속성 강제
+        TransactionTemplate roTx = new TransactionTemplate(transactionTemplate.getTransactionManager());
+        roTx.setReadOnly(true);
+        roTx.setPropagationBehavior(TransactionDefinition.PROPAGATION_REQUIRES_NEW);
 
         for (int i = 0; i < repeatCount; i++) {
+            final int pageIndex = i % 100;
+            // cacheKey와 pageable의 pageIndex를 반드시 일치시켜야 hitRatio가 의미 있음
+            final String cacheKey = String.format(
+                    "test:%s:spring:dummy-data-page:%d-20",
+                    applicationName,
+                    pageIndex
+            );
 
-            // Redis OFF → DB 직행
+            // Redis OFF → DB 직행 (고정 1페이지로 통일)
             if (!cacheEnabled) {
-                dummyDataRepository.findAll(pageable);
+                roTx.execute(status -> {
+                    Pageable pageable = PageRequest.of(pageIndex, 20, Sort.by("id").ascending());
+                    dummyDataRepository.findAll(pageable);
+                    return null;
+                });
                 continue;
             }
 
-            // 100개 키 순환
-            String cacheKey = String.format(
-                    "test:%s:spring:dummy-data-page:%d-20",
-                    applicationName,
-                    i % 100
-            );
-
             try {
-                // 1. Cache 조회
-                Object cached = redisTemplate.opsForValue().get(cacheKey);
+                // 1) Cache 조회 (직렬화 가능한 타입 권장: List<DTO> or JSON String)
+                @SuppressWarnings("unchecked")
+                var cached = (List<DummyDataRecord>) ops.get(cacheKey);
 
                 if (cached != null) {
                     cacheMetrics.incrementHit();
                     continue;
                 }
-
                 // 2. Cache Miss → DB 조회
                 cacheMetrics.incrementMiss();
-                var result = dummyDataRepository.findAll(pageable);
+                Pageable pageable = PageRequest.of(pageIndex, 20, Sort.by("id").ascending());
+                var page = dummyDataRepository.findAll(pageable);
 
-                // 3. Redis 저장
-                redisTemplate.opsForValue().set(cacheKey, result, CACHE_TTL);
+                // 3) Redis 저장: Page 자체 말고 content만 저장(직렬화 안정성)
+                ops.set(cacheKey, page.getContent(), CACHE_TTL);
 
-            } catch (Exception e) {
-                // Redis 장애 → DB fallback
+            // Redis 장애/직렬화 문제”만 fallback 대상으로 명확히 제한
+            } catch (org.springframework.data.redis.RedisConnectionFailureException |
+                     org.springframework.data.redis.RedisSystemException |
+                     org.springframework.data.redis.serializer.SerializationException e) {
+                // Redis 계층 문제 → DB fallback
                 cacheMetrics.incrementMiss();
+                Pageable pageable = PageRequest.of(pageIndex, 20, Sort.by("id").ascending());
                 dummyDataRepository.findAll(pageable);
             }
         }
