@@ -75,6 +75,38 @@ resource "google_compute_firewall" "allow_ssh" {
 
   target_tags = [var.instance_name]
 }
+resource "google_compute_firewall" "allow_load_test" {
+  name    = "${var.instance_name}-allow-load-test"
+  project = var.project_id
+  network = google_compute_network.exit8-vpc.name
+
+  allow {
+    protocol = "tcp"
+    ports    = ["8081"]
+  }
+
+  # Only allow from specific load test client IP
+  source_ranges = ["115.23.208.104/32"]
+
+  target_tags = [var.instance_name]
+}
+
+# Allow Service A Backend API (8081) from specific IP only
+resource "google_compute_firewall" "allow_service_a_api" {
+  name    = "${var.instance_name}-allow-service-a-api"
+  project = var.project_id
+  network = google_compute_network.exit8-vpc.name
+
+  allow {
+    protocol = "tcp"
+    ports    = ["8081"]
+  }
+
+  # Only allow from load test client IP
+  source_ranges = ["115.23.208.104/32"]
+
+  target_tags = [var.instance_name]
+}
 
 resource "google_compute_firewall" "allow_internal" {
   name    = "${var.instance_name}-allow-internal"
