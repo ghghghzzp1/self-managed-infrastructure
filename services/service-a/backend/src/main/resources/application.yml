@@ -84,8 +84,8 @@ resilience4j.circuitbreaker:
     default: # 공통 설정
       # 최근 호출 기준 설정
       sliding-window-type: COUNT_BASED
-      sliding-window-size: 30 # 최근 30건 기반 평가
-      minimum-number-of-calls: 30 # 30건 쌓여야 평가 시작
+      sliding-window-size: 100 # 최근 100건 기반 평가
+      minimum-number-of-calls: 100 # 100건 쌓여야 평가 시작
       failure-rate-threshold: 50 # 실패율 50% 이상이면 OPEN
   instances:
     testCircuit:
@@ -96,7 +96,7 @@ resilience4j.circuitbreaker:
       slow-call-rate-threshold: 50       # slow-call 비율 50% 이상이면 OPEN
       wait-duration-in-open-state: 10s   # OPEN 후 10초 뒤 HALF_OPEN
       # HALF_OPEN 상태에서 허용 호출 수
-      permitted-number-of-calls-in-half-open-state: 5
+      permitted-number-of-calls-in-half-open-state: 10
       # 예외 기록 기준
       record-exceptions:
         - java.sql.SQLException

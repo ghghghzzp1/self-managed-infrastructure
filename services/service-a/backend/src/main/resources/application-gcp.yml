@@ -128,13 +128,13 @@ resilience4j:
     configs:
       default:
         sliding-window-type: COUNT_BASED
-        sliding-window-size: 30
-        minimum-number-of-calls: 30
+        sliding-window-size: 100
+        minimum-number-of-calls: 100
         failure-rate-threshold: 50
         slow-call-duration-threshold: 3000ms
         slow-call-rate-threshold: 50
         wait-duration-in-open-state: 30s
-        permitted-number-of-calls-in-half-open-state: 5
+        permitted-number-of-calls-in-half-open-state: 10
         automatic-transition-from-open-to-half-open-enabled: true
     instances:
       loadTestCircuit:
