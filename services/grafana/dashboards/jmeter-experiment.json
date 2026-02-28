@@ -51,7 +51,7 @@
       "targets": [
         {
           "expr": "resilience4j_circuitbreaker_state{name=\"testCircuit\",application=\"service-a-backend\"}",
-          "legendFormat": "{{name}}",
+          "legendFormat": "{{instance}}",
           "refId": "A"
         }
       ]
