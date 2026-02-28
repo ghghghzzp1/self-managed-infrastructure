@@ -118,3 +118,4 @@ rate-limit:
 # Redis 적용
 redis-cache:
   enabled: ${REDIS_CACHE_ENABLED:false}
+  ttl-seconds: 300 # TTL 5분

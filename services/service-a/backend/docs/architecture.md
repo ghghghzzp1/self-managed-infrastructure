@@ -9,10 +9,9 @@ Client
   → TraceIdFilter
   → RateLimitFilter
   → Controller
-  → Service
+  → Service (AOP Proxy: CircuitBreaker / Timed)
   → Repository
-  → (Resilience4j CircuitBreaker - AOP)
-  → Observability (Metrics / Logs / Snapshot)
+  → Observability
 ```
 
 ### 설계 의도
@@ -36,8 +35,9 @@ services/service-a/backend/
 │   │   └── CircuitBreakerTestController.java
 │   │
 │   ├── service/           # 시스템 동작 로직 (부하 생성 · 차단 제어 · 상태 계산)
-│   │   ├── SystemHealthService.java # 토글 + snapshot 반영
-│   │   ├── LoadScenarioService.java # 캐시 적용 로직 추가
+│   │   ├── SystemHealthService.java
+│   │   ├── LoadScenarioService.java # 루프/실험 단위 제어
+│   │   ├── DbUnitService.java # CB + Tx + 캐시 로직
 │   │   └── CircuitBreakerTestService.java
 │   │
 │   ├── repository/        # 테스트용 데이터 접근
@@ -131,11 +131,16 @@ Controller = API Adapter
   4. 관측 데이터 접근(RequestEventBuffer 등)도 반드시 Service를 통해 수행
 
 - Service는 시스템 동작의 최소 단위다.
+- 단, 부하 실험 구조에서는
+  - LoadScenarioService는 “실험 제어 단위(loop driver)”
+  - DbUnitService는 “CircuitBreaker 집계 단위(unit call)”
+   로 역할을 분리한다.
 
 ### Resilience Layer
 - Resilience4j CircuitBreaker
-- AOP Proxy 기반 적용
-- OPEN 시 CallNotPermittedException 발생
+- Service 메서드를 AOP Proxy로 감싸는 방식으로 적용
+- Repository 이후가 아니라 Service 진입 시점에서 호출을 보호
+- OPEN 상태에서는 Service 호출 자체가 차단되며 CallNotPermittedException 발생
 - GlobalExceptionHandler에서 503 변환
 - 보호 로직은 비즈니스 로직과 분리된다.
 
@@ -166,6 +171,7 @@ Controller = API Adapter
 - 테스트 도메인과 분리
 - JPA 사용
 - ddl-auto: update (테스트 단계)
+
 | 테이블                       | 목적           |
 | ------------------------- | ------------ |
 | spring_load_test_logs     | 부하 실행 기록     |
@@ -180,15 +186,15 @@ Controller = API Adapter
 
 #### Key 네이밍 규칙
 ```
-{service}:{app}:{resource}:{id}
+{prefix}:{service}:{app}:{resource}:{id}
 
 # 예시
-service-a-backend:spring:load:cpu
-service-a-backend:spring:health:status
+test:service-a-backend:spring:dummy-data-page:{pageIndex}-{size}
 ```
 - 모든 Key는 TTL 필수
 - 테스트용 Key는 test: prefix 사용
-- Redis 실패도 Circuit 실패로 간주
+- Redis 장애는 try-catch로 DB fallback 처리
+- Redis 지연으로 인한 메서드 실행 시간 증가 시 slow-call로 집계
 
 ---
 
@@ -254,7 +260,7 @@ service-a-backend:spring:health:status
   ├─ Resilience4j CircuitBreaker (AOP Proxy)   ← 이벤트 발생 지점 2
 
 [Exception Layer]
-  ├─ GlobalExceptionHandler  ← CIRCUIT_OPEN 이벤트 기록 지점
+  ├─ GlobalExceptionHandler ← CallNotPermittedException을 503으로 변환
   
 [Observability Layer]
   ├─ CacheMetrics (hit/miss/error)
@@ -296,17 +302,19 @@ service-a-backend:spring:health:status
 ``` 
 Client
   ↓
-RateLimit
+TraceIdFilter
   ↓
-Service
-  ├─ Redis (READ)
-  ├─ DB (READ / WRITE)
+RateLimitFilter
   ↓
-Repository (순수 DB)
+Controller
   ↓
-Resilience4j CircuitBreaker (AOP Proxy)
+Service (AOP Proxy: CircuitBreaker / Timed)
+     ├─ Redis (READ)
+     ├─ DB (READ / WRITE)
+     ↓
+Repository
   ↓
-Observability (Metrics + Logs + Snapshot)
+Observability (Metrics / Logs / Snapshot)
 ```
 - RateLimit: 트래픽 양을 제어하는 변수
 - Redis: DB 부하 밀도를 제어하는 변수
