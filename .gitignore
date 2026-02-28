@@ -20,6 +20,10 @@ Thumbs.db
 *.log
 logs/
 
+# AI
+claude.md
+.sisyphus/
+.bkit-memory.json
 # Dependencies (Phase 2+)
 node_modules/
 vendor/

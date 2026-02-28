@@ -62,17 +62,17 @@ subgraph GCP["GCP Project"]
 end
 
 %% 외부 트래픽
-User -->|HTTPS / HTTP| GLB
-CloudArmor -. WAF 필터링 .-> GLB
+User -->|"HTTPS / HTTP"| GLB
+CloudArmor -. "WAF 필터링" .-> GLB
 GLB --> NPM
 
 %% NPM 내부 라우팅
-NPM -->|서비스 A 프론트| FE1
-NPM -->|/api/v1| BE1
-NPM -->|서비스 B 프론트| FE2
-NPM -->|/api/v2| BE2
-FE1 -.->|API 호출| BE1
-FE2 -.->|API 호출| BE2
+NPM -->|"서비스 A 프론트"| FE1
+NPM -->|"/api/v1"| BE1
+NPM -->|"서비스 B 프론트"| FE2
+NPM -->|"/api/v2"| BE2
+FE1 -.->|"API 호출"| BE1
+FE2 -.->|"API 호출"| BE2
 
 %% 애플리케이션 → 데이터
 BE1 --> CloudSQL
@@ -84,57 +84,57 @@ BE2 --> Memstore
 WM --> WI
 WD --> WI
 WD --> WM
-WM -. 로그 수집 .-> FE1
-WM -. 로그 수집 .-> FE2
-WM -. 로그 수집 .-> BE1
-WM -. 로그 수집 .-> BE2
+WM -. "로그 수집" .-> FE1
+WM -. "로그 수집" .-> FE2
+WM -. "로그 수집" .-> BE1
+WM -. "로그 수집" .-> BE2
 
 %% 관측 연결
-Prom -. 메트릭 스크레이프 .-> BE1
-Prom -. 메트릭 스크레이프 .-> BE2
+Prom -. "메트릭 스크레이프" .-> BE1
+Prom -. "메트릭 스크레이프" .-> BE2
 Prom --> NodeExp
 Prom --> PGExp
 Prom --> RedisExp
-PGExp -. 메트릭 .-> CloudSQL
-RedisExp -. 메트릭 .-> Memstore
+PGExp -. "메트릭" .-> CloudSQL
+RedisExp -. "메트릭" .-> Memstore
 Grafana --> Prom
 
 %% GCP 플랫폼 연결
-CloudSQL -. 로그 싱크 .-> BQ
-CloudMon -. 모니터링 .-> GLB
-CloudMon -. 모니터링 .-> CloudSQL
-CloudMon -. 모니터링 .-> Memstore
-SecMgr -. DB 패스워드 주입 .-> BE1
-SecMgr -. DB 패스워드 주입 .-> BE2
+CloudSQL -. "로그 싱크" .-> BQ
+CloudMon -. "모니터링" .-> GLB
+CloudMon -. "모니터링" .-> CloudSQL
+CloudMon -. "모니터링" .-> Memstore
+SecMgr -. "DB 패스워드 주입" .-> BE1
+SecMgr -. "DB 패스워드 주입" .-> BE2
 
 %% PSA 아웃바운드
-VM -. Private IP .-> PSA
-CloudNAT -. 아웃바운드 .-> External
+VM -. "Private IP" .-> PSA
+CloudNAT -. "아웃바운드" .-> External
 
 %% CI/CD 파이프라인
-GitHub -->|1. 이미지 빌드 & Push| DHub
-DHub -. 2. docker pull .-> VM
-GitHub -->|3. SSH + git pull + compose up| VM
+GitHub -->|"1. 이미지 빌드 & Push"| DHub
+DHub -. "2. docker pull" .-> VM
+GitHub -->|"3. SSH + git pull + compose up"| VM
 
-%% 스타일
-style User fill:#f9f,stroke:#333,stroke-width:2px
-style GitHub fill:#24292e,color:#fff
-style DHub fill:#066da5,color:#fff
-style GLB fill:#4285f4,color:#fff
-style CloudArmor fill:#ea4335,color:#fff
-style NPM fill:#009639,color:#fff
-style FE1 fill:#00d8ff,color:#333
-style FE2 fill:#00d8ff,color:#333
-style BE1 fill:#6db33f,color:#fff
-style BE2 fill:#009485,color:#fff
-style WM fill:#00a9e0,color:#fff
-style WI fill:#00a9e0,color:#fff
-style WD fill:#00a9e0,color:#fff
-style Prom fill:#e6522c,color:#fff
-style Grafana fill:#f39c12,color:#fff
-style CloudSQL fill:#336791,color:#fff
-style Memstore fill:#dc382d,color:#fff
-style SecMgr fill:#fbbc04,color:#333
-style CloudMon fill:#34a853,color:#fff
-style BQ fill:#4285f4,color:#fff
-style CloudNAT fill:#34a853,color:#fff
+%% 스타일 (에러 방지를 위해 color 값과 세미콜론 확인)
+style User fill:#f9f,stroke:#333,stroke-width:2px;
+style GitHub fill:#24292e,color:#fff;
+style DHub fill:#066da5,color:#fff;
+style GLB fill:#4285f4,color:#fff;
+style CloudArmor fill:#ea4335,color:#fff;
+style NPM fill:#009639,color:#fff;
+style FE1 fill:#00d8ff,color:#333;
+style FE2 fill:#00d8ff,color:#333;
+style BE1 fill:#6db33f,color:#fff;
+style BE2 fill:#009485,color:#fff;
+style WM fill:#00a9e0,color:#fff;
+style WI fill:#00a9e0,color:#fff;
+style WD fill:#00a9e0,color:#fff;
+style Prom fill:#e6522c,color:#fff;
+style Grafana fill:#f39c12,color:#fff;
+style CloudSQL fill:#336791,color:#fff;
+style Memstore fill:#dc382d,color:#fff;
+style SecMgr fill:#fbbc04,color:#333;
+style CloudMon fill:#34a853,color:#fff;
+style BQ fill:#4285f4,color:#fff;
+style CloudNAT fill:#34a853,color:#fff;

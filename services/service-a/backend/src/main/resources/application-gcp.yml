@@ -12,8 +12,9 @@ spring:
     password: ${DATABASE_PASSWORD}
     driver-class-name: org.postgresql.Driver
     hikari:
-      maximum-pool-size: 30
-      minimum-idle: 5
+      # Cloud SQL max_connections=200 기준 분배: Service A(100) + Service B(40) + 운영/모니터링(30) + 버퍼(30)
+      maximum-pool-size: 100
+      minimum-idle: 10
       connection-timeout: 5000
       validation-timeout: 2000
       leak-detection-threshold: 15000
@@ -127,10 +128,10 @@ resilience4j:
     configs:
       default:
         sliding-window-type: COUNT_BASED
-        sliding-window-size: 20
-        minimum-number-of-calls: 15
+        sliding-window-size: 30
+        minimum-number-of-calls: 30
         failure-rate-threshold: 50
-        slow-call-duration-threshold: 2000ms
+        slow-call-duration-threshold: 3000ms
         slow-call-rate-threshold: 50
         wait-duration-in-open-state: 30s
         permitted-number-of-calls-in-half-open-state: 5
