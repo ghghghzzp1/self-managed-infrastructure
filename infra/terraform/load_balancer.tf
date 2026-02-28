@@ -43,7 +43,7 @@ resource "google_compute_health_check" "exit8_hc" {
   project = var.project_id
 
   http_health_check {
-    port         = 8080
+    port         = 8081
     request_path = "/health"
     response     = "OK"
   }
