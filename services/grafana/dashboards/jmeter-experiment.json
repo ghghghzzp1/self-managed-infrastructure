@@ -50,7 +50,7 @@
       "type": "state-timeline",
       "targets": [
         {
-          "expr": "resilience4j_circuitbreaker_state{name=\"testCircuit\",application=\"service-a-backend\"}",
+          "expr": "max by (instance) (resilience4j_circuitbreaker_state{name=\"testCircuit\",application=\"service-a-backend\"})",
           "legendFormat": "{{instance}}",
           "refId": "A"
         }
