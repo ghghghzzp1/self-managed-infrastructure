@@ -80,13 +80,13 @@
           {
             "matcher": { "id": "byName", "options": "429" },
             "properties": [
-              { "id": "color", "value": { "mode": "fixed", "fixedColor": "red" } }
+              { "id": "color", "value": { "mode": "fixed", "fixedColor": "yellow" } }
             ]
           },
           {
             "matcher": { "id": "byName", "options": "500" },
             "properties": [
-              { "id": "color", "value": { "mode": "fixed", "fixedColor": "orange" } }
+              { "id": "color", "value": { "mode": "fixed", "fixedColor": "red" } }
             ]
           },
           {
