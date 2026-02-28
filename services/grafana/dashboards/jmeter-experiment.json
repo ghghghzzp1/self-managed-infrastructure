@@ -50,7 +50,7 @@
       "type": "state-timeline",
       "targets": [
         {
-          "expr": "sum by (instance) (\n  resilience4j_circuitbreaker_state{application=\"service-a-backend\",job=\"service-a\",name=\"testCircuit\",state=~\"open|forced_open\"} * 1\n+ resilience4j_circuitbreaker_state{application=\"service-a-backend\",job=\"service-a\",name=\"testCircuit\",state=\"half_open\"} * 2\n)",
+          "expr": "max by (instance) (resilience4j_circuitbreaker_state{application=\"service-a-backend\",job=\"service-a\",name=\"testCircuit\",state=~\"open|forced_open\"})\n+ 2 * max by (instance) (resilience4j_circuitbreaker_state{application=\"service-a-backend\",job=\"service-a\",name=\"testCircuit\",state=\"half_open\"})",
           "legendFormat": "{{instance}}",
           "refId": "A"
         }
