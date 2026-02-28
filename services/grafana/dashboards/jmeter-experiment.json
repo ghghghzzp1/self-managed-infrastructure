@@ -51,7 +51,7 @@
       "targets": [
         {
           "expr": "max by (instance) (resilience4j_circuitbreaker_state{application=\"service-a-backend\",job=\"service-a\",name=\"testCircuit\",state=~\"open|forced_open\"})\n+ 2 * max by (instance) (resilience4j_circuitbreaker_state{application=\"service-a-backend\",job=\"service-a\",name=\"testCircuit\",state=\"half_open\"})",
-          "legendFormat": "{{instance}}",
+          "legendFormat": " ",
           "refId": "A"
         }
       ]
@@ -88,7 +88,7 @@
         "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
         "textMode": "auto"
       },
-      "title": "CB Forced Open (DANGER)",
+      "title": "CB Forced Open",
       "type": "stat",
       "targets": [
         {
@@ -130,7 +130,7 @@
         "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
         "textMode": "auto"
       },
-      "title": "CB Disabled (DANGER)",
+      "title": "CB Disabled",
       "type": "stat",
       "targets": [
         {
@@ -172,7 +172,7 @@
         "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
         "textMode": "auto"
       },
-      "title": "CB Metrics Only (WARN)",
+      "title": "CB Metrics Only",
       "type": "stat",
       "targets": [
         {
