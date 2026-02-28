@@ -1,15 +1,19 @@
 # ==========================================
-# 16GB / 4core 서버 최적화 설정
-# 총 메모리 limit:   ~12.6GB
-# 총 메모리 예약:    ~6.4GB
-# 시스템 예약:       ~3.4GB
+# 16GB / 4core 서버 부하테스트 최적화 설정
+# (PostgreSQL·Redis·Vault → GCP 관리형 이관으로 ~2.4G 추가 확보)
+#
+# 총 메모리 limit:   ~11.7GB
+# 총 메모리 예약:    ~6.2GB
+# 시스템 여유:       ~4.3GB  (OS + Docker daemon + 버퍼)
 #
 # 레이어별 limit 분배:
-#   Wazuh SIEM:      ~6.1GB (manager 2G + indexer 3G + dashboard 1G)
-#   데이터:          ~2.0GB (postgres 1.5G + redis 512M)
-#   애플리케이션:    ~2.2GB (svc-a 1G + svc-b 768M + frontends 384M)
-#   인프라/관측:     ~2.3GB (vault 384M + prometheus 768M + grafana 512M + npm 512M)
-#   Exporters:       ~384M
+#   애플리케이션:    ~3.5GB (svc-a-be 1.5G + svc-b-be 1G + frontends 512M + npm 512M)  ← 부하테스트 주 타겟
+#   Wazuh SIEM:      ~6.0GB (manager 2G + indexer 3G + dashboard 1G)
+#   관측:            ~1.8GB (prometheus 1G + grafana 512M + exporters 384M)
+#
+# CPU limit (4core 기준, 동시 풀 부하 방지용 throttle):
+#   svc-a-backend  2.0  / svc-b-backend 1.5  / npm 1.0
+#   Wazuh 합계     1.3  / 관측 합계     0.8
 # ==========================================
 
 # 공통 로그 설정 (YAML anchor)
@@ -42,6 +46,7 @@ services:
     deploy:
       resources:
         limits:
+          cpus: '1.0'
           memory: 512M
         reservations:
           memory: 256M
@@ -64,7 +69,8 @@ services:
       - "8082:8080"
     environment:
       SPRING_PROFILES_ACTIVE: gcp
-      JAVA_OPTS: "-Xms512m -Xmx768m -XX:+UseG1GC -XX:MaxGCPauseMillis=100"
+      # Xmx1g: 컨테이너 limit 1.5G 기준 (JVM heap 1G + 메타스페이스 200M + 오버헤드 200M ≈ 1.4G)
+      JAVA_OPTS: "-Xms512m -Xmx1g -XX:+UseG1GC -XX:MaxGCPauseMillis=100 -XX:+UseContainerSupport"
       # GCP Cloud SQL
       DATABASE_HOST: ${DATABASE_HOST:-10.101.0.3}
       DATABASE_PORT: ${DATABASE_PORT:-5432}
@@ -87,6 +93,13 @@ services:
       retries: 3
       start_period: 60s
     logging: *default-logging
+    deploy:
+      resources:
+        limits:
+          cpus: '2.0'
+          memory: 1536M
+        reservations:
+          memory: 1G
 
   # Service A - Frontend (Nginx)
   service-a-frontend:
@@ -112,9 +125,10 @@ services:
     deploy:
       resources:
         limits:
-          memory: 192M
+          cpus: '0.5'
+          memory: 256M
         reservations:
-          memory: 96M
+          memory: 128M
   # Service B - Backend (FastAPI)
   service-b-backend:
     image: exit8/service-b-backend:latest
@@ -141,6 +155,13 @@ services:
       retries: 3
       start_period: 30s
     logging: *default-logging
+    deploy:
+      resources:
+        limits:
+          cpus: '1.5'
+          memory: 1G
+        reservations:
+          memory: 512M
 
   # Service B - Frontend (Nginx)
   service-b-frontend:
@@ -166,9 +187,10 @@ services:
     deploy:
       resources:
         limits:
-          memory: 192M
+          cpus: '0.5'
+          memory: 256M
         reservations:
-          memory: 96M
+          memory: 128M
   # ==============
   # 보안 모니터링 레이어 (Wazuh SIEM)
   # ==============
@@ -224,6 +246,7 @@ services:
     deploy:
       resources:
         limits:
+          cpus: '0.5'
           memory: 2G
         reservations:
           memory: 1G
@@ -258,6 +281,7 @@ services:
     deploy:
       resources:
         limits:
+          cpus: '0.5'
           memory: 3G
         reservations:
           memory: 1536M
@@ -296,6 +320,7 @@ services:
     deploy:
       resources:
         limits:
+          cpus: '0.3'
           memory: 1G
         reservations:
           memory: 512M
@@ -323,9 +348,10 @@ services:
     deploy:
       resources:
         limits:
-          memory: 768M
+          cpus: '0.5'
+          memory: 1G
         reservations:
-          memory: 384M
+          memory: 512M
 
   grafana:
     image: grafana/grafana:10.2.2
@@ -349,6 +375,7 @@ services:
     deploy:
       resources:
         limits:
+          cpus: '0.3'
           memory: 512M
         reservations:
           memory: 256M
@@ -373,6 +400,7 @@ services:
     deploy:
       resources:
         limits:
+          cpus: '0.1'
           memory: 128M
         reservations:
           memory: 64M
@@ -389,6 +417,7 @@ services:
     deploy:
       resources:
         limits:
+          cpus: '0.1'
           memory: 128M
         reservations:
           memory: 64M
@@ -404,6 +433,7 @@ services:
     deploy:
       resources:
         limits:
+          cpus: '0.1'
           memory: 128M
         reservations:
           memory: 64M
