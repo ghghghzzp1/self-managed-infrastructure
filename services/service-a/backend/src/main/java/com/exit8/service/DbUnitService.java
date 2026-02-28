@@ -54,28 +54,37 @@ public class DbUnitService {
         }
         // Redis ValueOperations 핸들 (동일 연산 반복 호출 시 가독성 및 코드 단순화 목적)
         final var ops = redisTemplate.opsForValue();
+        List<DummyDataRecord> cached = null;
 
+        // 1) Redis Cache Read (실패하면 캐시 무시하고 DB로 진행)
         try {
             @SuppressWarnings("unchecked")
-            var cached = (List<DummyDataRecord>) ops.get(cacheKey);
-
-            if (cached != null) {
-                cacheMetrics.incrementHit();
-                return;
-            }
-            // Cache Miss
-            cacheMetrics.incrementMiss();
-            var page = dummyDataRepository.findAll(pageable);
-
-            // 3) 캐시 저장 (TTL 보정: 최소 1초)
-            long ttl = Math.max(cacheTtlSeconds, 1);
-            ops.set(cacheKey, page.getContent(), Duration.ofSeconds(ttl));
-
+            var result = (List<DummyDataRecord>) ops.get(cacheKey);
+            cached = result;
         } catch (org.springframework.data.redis.RedisConnectionFailureException |
                  org.springframework.data.redis.RedisSystemException |
                  org.springframework.data.redis.serializer.SerializationException e) {
-            // Redis 장애 시 → DB fallback (miss는 이미 집계됨)
-            dummyDataRepository.findAll(pageable);
+            // read 실패 -> miss로 처리될 수 있으나, miss 집계는 DB 조회 시점에 1회만 수행
+        }
+
+        // 2) Cache Hit
+        if (cached != null) {
+            cacheMetrics.incrementHit();
+            return;
+        }
+
+        // 3) Cache Miss -> DB 조회 (DB 조회 발생 시 miss 1회만 증가)
+        cacheMetrics.incrementMiss();
+        var page = dummyDataRepository.findAll(pageable);
+
+        // 4) Redis Cache Write (실패해도 DB 결과로 정상 처리, DB 재조회 없음)
+        try {
+            long ttl = Math.max(cacheTtlSeconds, 1);
+            ops.set(cacheKey, page.getContent(), Duration.ofSeconds(ttl));
+        } catch (org.springframework.data.redis.RedisConnectionFailureException |
+                 org.springframework.data.redis.RedisSystemException |
+                 org.springframework.data.redis.serializer.SerializationException e) {
+            // write 실패 -> 캐시 저장만 실패.
         }
     }
 
