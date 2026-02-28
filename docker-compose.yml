@@ -110,6 +110,11 @@ services:
       retries: 3
     logging: *default-logging
     deploy:
+      resources:
+        limits:
+          memory: 192M
+        reservations:
+          memory: 96M
   # Service B - Backend (FastAPI)
   service-b-backend:
     image: exit8/service-b-backend:latest
@@ -159,9 +164,11 @@ services:
       retries: 3
     logging: *default-logging
     deploy:
-  # ==============
-  # ==============
-  # 보안 모니터링 레이어 (Wazuh SIEM)
+      resources:
+        limits:
+          memory: 192M
+        reservations:
+          memory: 96M
   # ==============
   # 보안 모니터링 레이어 (Wazuh SIEM)
   # ==============
@@ -215,6 +222,11 @@ services:
       - backend
     logging: *default-logging
     deploy:
+      resources:
+        limits:
+          memory: 2G
+        reservations:
+          memory: 1G
   wazuh.indexer:
     image: wazuh/wazuh-indexer:4.9.2
     hostname: wazuh.indexer
@@ -244,6 +256,11 @@ services:
       - wazuh_internal
     logging: *default-logging
     deploy:
+      resources:
+        limits:
+          memory: 3G
+        reservations:
+          memory: 1536M
   wazuh.dashboard:
     image: wazuh/wazuh-dashboard:4.9.2
     hostname: wazuh.dashboard
@@ -277,6 +294,11 @@ services:
       - backend
     logging: *default-logging
     deploy:
+      resources:
+        limits:
+          memory: 1G
+        reservations:
+          memory: 512M
   # ===================
   # 관측 레이어
   # ===================
@@ -390,8 +412,6 @@ networks:
     driver: bridge
   backend:
     driver: bridge
-  db:
-    driver: bridge
   wazuh_internal:
     driver: bridge
 
@@ -401,6 +421,8 @@ volumes:
   prometheus_data:
   service-a-logs:
   service-b-logs:
+  filebeat_etc:
+  filebeat_var:
   wazuh_api_configuration:
   wazuh_etc:
   wazuh_logs:
