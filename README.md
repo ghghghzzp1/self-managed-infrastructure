@@ -208,6 +208,53 @@ gcloud secrets versions access latest --secret=exit8-wazuh-credentials | jq -r '
 - Redis Exporter: 캐시 히트율, 메모리
 - Custom: Cache Hit Ratio, Rate Limit
 
+## Logging Architecture
+
+앱 컨테이너 로그는 `gcplogs` 드라이버로 Cloud Logging에 직접 전송되며, 두 가지 저장소로 라우팅됩니다.
+
+```
+앱 컨테이너 (gcplogs driver)
+  └─→ Cloud Logging
+        ├─→ BigQuery: exit8_logs     [INFO+, 90일 자동 만료]
+        └─→ GCS: error-archive       [ERROR+, 1년 보관]
+                  ├ STANDARD  0-30일   $0.02/GB
+                  ├ NEARLINE  30-90일  $0.01/GB
+                  └ COLDLINE  90일~    $0.004/GB
+
+인프라 컨테이너 (json-file driver)  →  로컬 보관만 (docker logs 지원)
+```
+
+**로그 소스별 필터**
+
+| 소스 | BigQuery (exit8_logs) | GCS (error-archive) |
+|------|-----------------------|---------------------|
+| 앱 컨테이너 (gce_instance) | INFO 이상 | ERROR 이상 |
+| Cloud SQL | WARNING 이상 | ERROR 이상 |
+| Redis | WARNING 이상 | ERROR 이상 |
+
+**BigQuery 로그 조회**
+
+```sql
+-- 최근 앱 에러 로그 조회
+SELECT timestamp, severity, jsonPayload.message, labels.`com_docker_compose_service`
+FROM `thinking-orb-485613-k3.exit8_logs.*`
+WHERE severity >= 'ERROR'
+  AND timestamp > TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL 24 HOUR)
+ORDER BY timestamp DESC
+LIMIT 100;
+
+-- 서비스별 에러 집계
+SELECT labels.`com_docker_compose_service` AS service,
+       COUNT(*) AS error_count
+FROM `thinking-orb-485613-k3.exit8_logs.*`
+WHERE severity >= 'ERROR'
+  AND timestamp > TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL 7 DAY)
+GROUP BY service
+ORDER BY error_count DESC;
+```
+
+> **주의**: 앱 컨테이너(`service-a-backend`, `service-b-backend` 등)는 `gcplogs` 드라이버를 사용하므로 `docker logs` 명령이 동작하지 않습니다. 로그는 Cloud Logging Console 또는 BigQuery에서 조회하세요.
+
 ## Estimated Costs
 
 | Service | Cost |
@@ -216,7 +263,9 @@ gcloud secrets versions access latest --secret=exit8-wazuh-credentials | jq -r '
 | Memorystore | ~$35/month |
 | Compute Engine | ~$70/month |
 | HTTPS LB + Cloud Armor | ~$20/month |
-| **Total** | **~$175/month (~₩250,000)** |
+| BigQuery (exit8_logs, 90일) | ~$1/month (첫 10GB 무료) |
+| GCS Error Archive | ~$0.1/month (ERROR 로그만, COLDLINE) |
+| **Total** | **~$176/month (~₩253,000)** |
 
 ## Project Structure
 
@@ -256,6 +305,8 @@ exit8/
 
 | Date | Change |
 |------|--------|
+| 2026-03-01 | BigQuery 앱 로그 수집 (gcplogs + GCS Error Archive) |
+| 2026-02-28 | GCP Load Balancer 헬스체크 포트 8081로 변경 |
 | 2026-02-27 | Vault → GCP Secret Manager 완전 이관 |
 | 2026-02-26 | 2-Tier Cache (Caffeine + Redis) 구현 |
 | 2026-02-25 | GCP Managed Services (Cloud SQL, Memorystore) 도입 |

@@ -10,7 +10,10 @@ resource "google_bigquery_dataset" "exit8_logs" {
   dataset_id  = "exit8_logs"
   project     = var.project_id
   location    = var.region
-  description = "Exit8 infrastructure logs (long-term storage)"
+  description = "Exit8 infrastructure and application logs (long-term storage)"
+
+  # 90일 자동 만료: 비용 제어 (ERROR+ 는 GCS 아카이브로 별도 장기 보관)
+  default_table_expiration_ms = 7776000000 # 90 days = 90 * 24 * 60 * 60 * 1000
 
   delete_contents_on_destroy = false
 }
@@ -25,19 +28,78 @@ resource "google_bigquery_dataset_iam_member" "log_sink_writer" {
   depends_on = [google_logging_project_sink.exit8_logs_sink]
 }
 
-# Log Sink for BigQuery (long-term log storage)
+# Log Sink for BigQuery (app + infra 로그, 90일 보관)
+# - gce_instance: Docker gcplogs 드라이버로 전달되는 앱 컨테이너 로그 (INFO+)
+# - cloudsql_database / redis_instance: 인프라 경고/오류만 (WARNING+)
 resource "google_logging_project_sink" "exit8_logs_sink" {
   name                   = "exit8-logs-sink"
   project                = var.project_id
   destination            = "bigquery.googleapis.com/projects/${var.project_id}/datasets/${google_bigquery_dataset.exit8_logs.dataset_id}"
-  filter                 = "resource.type:\"gce_\" OR resource.type:\"cloudsql\" OR resource.type:\"redis_instance\""
-  unique_writer_identity = true  # 전용 서비스 계정 생성 (IAM 바인딩과 함께 사용)
+  filter                 = "(resource.type=\"gce_instance\" AND severity>=\"INFO\") OR (resource.type=\"cloudsql_database\" AND severity>=\"WARNING\") OR (resource.type=\"redis_instance\" AND severity>=\"WARNING\")"
+  unique_writer_identity = true
 
   bigquery_options {
     use_partitioned_tables = true
   }
 
   depends_on = [google_bigquery_dataset.exit8_logs]
+}
+
+# ============================================================================
+# Error Archive - Cloud Storage (ERROR+ 장기 보관, BigQuery보다 저렴)
+# ============================================================================
+
+# GCS 버킷: ERROR+ 로그 1년 보관
+# 스토리지 클래스 자동 전환으로 비용 최소화
+resource "google_storage_bucket" "exit8_error_archive" {
+  name          = "${var.project_id}-exit8-error-archive"
+  location      = var.region
+  project       = var.project_id
+  force_destroy = false
+
+  uniform_bucket_level_access = true
+
+  # STANDARD → NEARLINE (30일): $0.02/GB → $0.01/GB
+  lifecycle_rule {
+    action {
+      type          = "SetStorageClass"
+      storage_class = "NEARLINE"
+    }
+    condition { age = 30 }
+  }
+
+  # NEARLINE → COLDLINE (90일): $0.01/GB → $0.004/GB
+  lifecycle_rule {
+    action {
+      type          = "SetStorageClass"
+      storage_class = "COLDLINE"
+    }
+    condition { age = 90 }
+  }
+
+  # 1년 후 자동 삭제
+  lifecycle_rule {
+    action { type = "Delete" }
+    condition { age = 365 }
+  }
+}
+
+# Log Sink for GCS (ERROR+ 전용, 1년 보관)
+resource "google_logging_project_sink" "exit8_error_archive_sink" {
+  name                   = "exit8-error-archive-sink"
+  project                = var.project_id
+  destination            = "storage.googleapis.com/${google_storage_bucket.exit8_error_archive.name}"
+  filter                 = "(resource.type=\"gce_instance\" OR resource.type=\"cloudsql_database\" OR resource.type=\"redis_instance\") AND severity>=\"ERROR\""
+  unique_writer_identity = true
+
+  depends_on = [google_storage_bucket.exit8_error_archive]
+}
+
+# GCS 버킷 쓰기 권한
+resource "google_storage_bucket_iam_member" "error_archive_writer" {
+  bucket = google_storage_bucket.exit8_error_archive.name
+  role   = "roles/storage.objectCreator"
+  member = google_logging_project_sink.exit8_error_archive_sink.writer_identity
 }
 
 # ============================================================================

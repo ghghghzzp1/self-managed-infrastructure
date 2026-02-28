@@ -16,12 +16,20 @@
 #   Wazuh 합계     1.3  / 관측 합계     0.8
 # ==========================================
 
-# 공통 로그 설정 (YAML anchor)
+# 인프라 서비스 로그 설정 (로컬 json-file, docker logs 명령 지원)
 x-logging: &default-logging
   driver: json-file
   options:
     max-size: "10m"
     max-file: "3"
+
+# 앱 서비스 로그 설정 (gcplogs → Cloud Logging → BigQuery 싱크)
+# GCE VM에서 실행 시 프로젝트 ID를 메타데이터 서버에서 자동 감지
+x-app-logging: &app-logging
+  driver: gcplogs
+  options:
+    gcp-log-cmd: "true"         # 컨테이너 실행 명령어를 로그 메타데이터에 포함
+    labels: "com.docker.compose.service,com.docker.compose.project"
 
 services:
   # ===================
@@ -92,7 +100,7 @@ services:
       timeout: 10s
       retries: 3
       start_period: 60s
-    logging: *default-logging
+    logging: *app-logging
     deploy:
       resources:
         limits:
@@ -121,7 +129,7 @@ services:
       interval: 30s
       timeout: 10s
       retries: 3
-    logging: *default-logging
+    logging: *app-logging
     deploy:
       resources:
         limits:
@@ -154,7 +162,7 @@ services:
       timeout: 10s
       retries: 3
       start_period: 30s
-    logging: *default-logging
+    logging: *app-logging
     deploy:
       resources:
         limits:
@@ -183,7 +191,7 @@ services:
       interval: 30s
       timeout: 10s
       retries: 3
-    logging: *default-logging
+    logging: *app-logging
     deploy:
       resources:
         limits:
