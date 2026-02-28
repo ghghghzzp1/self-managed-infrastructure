@@ -400,7 +400,7 @@ export default function LoadTestDashboard() {
       controller = new AbortController();
 
       try {
-        const data = await fetchDefaultData('/api/system/recent-requests?limit=50', { signal: controller.signal });
+        const data = await fetchDefaultData('/api/system/recent-requests?limit=100', { signal: controller.signal });
         if (stopped) return;
         setEvents(Array.isArray(data) ? data : []);
         setError(null);
