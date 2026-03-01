@@ -29,7 +29,10 @@
               "options": {
                 "0": { "text": "CLOSED", "color": "green" },
                 "1": { "text": "OPEN", "color": "red" },
-                "2": { "text": "HALF_OPEN", "color": "yellow" }
+                "2": { "text": "HALF_OPEN", "color": "yellow" },
+                "3": { "text": "FORCED_OPEN", "color": "#705DA0" },
+                "4": { "text": "DISABLED", "color": "gray" },
+                "5": { "text": "METRICS_ONLY", "color": "blue" }
               },
               "type": "value"
             }
@@ -40,144 +43,18 @@
           }
         }
       },
-      "gridPos": { "h": 6, "w": 12, "x": 0, "y": 1 },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 1 },
       "id": 1,
       "options": {
         "mergeValues": true,
-        "showValue": "never"
+        "showValue": "always"
       },
       "title": "Circuit Breaker State (testCircuit)",
       "type": "state-timeline",
       "targets": [
         {
-          "expr": "max by (instance) (resilience4j_circuitbreaker_state{application=\"service-a-backend\",job=\"service-a\",name=\"testCircuit\",state=~\"open|forced_open\"})\n+ 2 * max by (instance) (resilience4j_circuitbreaker_state{application=\"service-a-backend\",job=\"service-a\",name=\"testCircuit\",state=\"half_open\"})",
+          "expr": "1 * max by (instance) (resilience4j_circuitbreaker_state{application=\"service-a-backend\",job=\"service-a\",name=\"testCircuit\",state=\"open\"})\n+ 2 * max by (instance) (resilience4j_circuitbreaker_state{application=\"service-a-backend\",job=\"service-a\",name=\"testCircuit\",state=\"half_open\"})\n+ 3 * max by (instance) (resilience4j_circuitbreaker_state{application=\"service-a-backend\",job=\"service-a\",name=\"testCircuit\",state=\"forced_open\"})\n+ 4 * max by (instance) (resilience4j_circuitbreaker_state{application=\"service-a-backend\",job=\"service-a\",name=\"testCircuit\",state=\"disabled\"})\n+ 5 * max by (instance) (resilience4j_circuitbreaker_state{application=\"service-a-backend\",job=\"service-a\",name=\"testCircuit\",state=\"metrics_only\"})",
           "legendFormat": " ",
-          "refId": "A"
-        }
-      ]
-    },
-    {
-      "datasource": {
-        "type": "prometheus",
-        "uid": "prometheus"
-      },
-      "fieldConfig": {
-        "defaults": {
-          "mappings": [
-            {
-              "options": {
-                "0": { "text": "OFF", "color": "green" },
-                "1": { "text": "FORCED_OPEN", "color": "#705DA0" }
-              },
-              "type": "value"
-            }
-          ],
-          "thresholds": {
-            "mode": "absolute",
-            "steps": [{ "color": "green", "value": null }, { "color": "#705DA0", "value": 1 }]
-          }
-        }
-      },
-      "gridPos": { "h": 2, "w": 4, "x": 0, "y": 7 },
-      "id": 11,
-      "options": {
-        "colorMode": "value",
-        "graphMode": "none",
-        "justifyMode": "auto",
-        "orientation": "horizontal",
-        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
-        "textMode": "auto"
-      },
-      "title": "CB Forced Open",
-      "type": "stat",
-      "targets": [
-        {
-          "expr": "max by (instance) (resilience4j_circuitbreaker_state{application=\"service-a-backend\",job=\"service-a\",name=\"testCircuit\",state=\"forced_open\"})",
-          "legendFormat": "{{instance}}",
-          "refId": "A"
-        }
-      ]
-    },
-    {
-      "datasource": {
-        "type": "prometheus",
-        "uid": "prometheus"
-      },
-      "fieldConfig": {
-        "defaults": {
-          "mappings": [
-            {
-              "options": {
-                "0": { "text": "OFF", "color": "green" },
-                "1": { "text": "DISABLED", "color": "gray" }
-              },
-              "type": "value"
-            }
-          ],
-          "thresholds": {
-            "mode": "absolute",
-            "steps": [{ "color": "green", "value": null }, { "color": "gray", "value": 1 }]
-          }
-        }
-      },
-      "gridPos": { "h": 2, "w": 4, "x": 4, "y": 7 },
-      "id": 12,
-      "options": {
-        "colorMode": "value",
-        "graphMode": "none",
-        "justifyMode": "auto",
-        "orientation": "horizontal",
-        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
-        "textMode": "auto"
-      },
-      "title": "CB Disabled",
-      "type": "stat",
-      "targets": [
-        {
-          "expr": "max by (instance) (resilience4j_circuitbreaker_state{application=\"service-a-backend\",job=\"service-a\",name=\"testCircuit\",state=\"disabled\"})",
-          "legendFormat": "{{instance}}",
-          "refId": "A"
-        }
-      ]
-    },
-    {
-      "datasource": {
-        "type": "prometheus",
-        "uid": "prometheus"
-      },
-      "fieldConfig": {
-        "defaults": {
-          "mappings": [
-            {
-              "options": {
-                "0": { "text": "OFF", "color": "green" },
-                "1": { "text": "METRICS_ONLY", "color": "blue" }
-              },
-              "type": "value"
-            }
-          ],
-          "thresholds": {
-            "mode": "absolute",
-            "steps": [{ "color": "green", "value": null }, { "color": "blue", "value": 1 }]
-          }
-        }
-      },
-      "gridPos": { "h": 2, "w": 4, "x": 8, "y": 7 },
-      "id": 13,
-      "options": {
-        "colorMode": "value",
-        "graphMode": "none",
-        "justifyMode": "auto",
-        "orientation": "horizontal",
-        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
-        "textMode": "auto"
-      },
-      "title": "CB Metrics Only",
-      "type": "stat",
-      "targets": [
-        {
-          "expr": "max by (instance) (resilience4j_circuitbreaker_state{application=\"service-a-backend\",job=\"service-a\",name=\"testCircuit\",state=\"metrics_only\"})",
-          "legendFormat": "{{instance}}",
           "refId": "A"
         }
       ]
