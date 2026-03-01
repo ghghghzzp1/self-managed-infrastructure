@@ -26,7 +26,7 @@
 | Framework     | Spring Boot **3.4.2**            |
 | Build         | Gradle                           |
 | DB            | PostgreSQL 16                    |
-| Cache         | Redis 7                          |
+| Cache         | **2-Tier (Caffeine L1 + Redis L2)** |
 | Resilience    | Resilience4j                     |
 | Observability | Actuator, Micrometer, Prometheus |
 | Infra         | Docker (Single-node 환경 기준)    |
@@ -81,6 +81,49 @@ services/service-a/backend/
 - Redis TTL 고정
 - Docker 자원 고정
 
+---
+
+## 4.1. Cache Architecture (2-Tier)
+
+> Main README의 [Cache Architecture](../../../README.md#cache-architecture-2-tier) 섹션과 동일한 구조
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                    Application Layer                        │
+│                                                             │
+│  ┌─────────────────┐                                        │
+│  │ L1: Caffeine    │  TTL: 60s, Max: 1000 entries           │
+│  │ (In-Memory)     │  Hit Ratio: ~90% (hot data)            │
+│  └────────┬────────┘                                        │
+│           │ Miss                                             │
+│           ▼                                                 │
+│  ┌─────────────────┐                                        │
+│  │ L2: Redis       │  TTL: 300s (5분)                       │
+│  │ (Memorystore)   │  Hit Ratio: ~80% (warm data)           │
+│  └────────┬────────┘                                        │
+│           │ Miss                                             │
+│           ▼                                                 │
+│  ┌─────────────────┐                                        │
+│  │ PostgreSQL      │  Source of Truth                       │
+│  │ (Cloud SQL)     │                                        │
+│  └─────────────────┘                                        │
+└─────────────────────────────────────────────────────────────┘
+```
+
+### 캐시 계층 구조
+
+| 계층 | 기술 | 위치 | TTL | 용도 |
+|------|------|------|-----|------|
+| **L1** | Caffeine | JVM In-Memory | 60s | 핫 데이터, 빈번한 조회 |
+| **L2** | Redis (Memorystore) | GCP Private IP | 300s | 웜 데이터, 인스턴스 간 공유 |
+| **Source** | PostgreSQL (Cloud SQL) | GCP Private IP | - | 원본 데이터 |
+
+### 장애 시 동작
+
+| 상황 | 영향 | 복구 |
+|------|------|------|
+| Redis 재시작 | L2 캐시 miss → DB 부하 일시 증가 | 수 분 내 자동 워밍업 |
+| Redis 장애 | L1(Caffeine)만 동작, DB 직접 조회 | CircuitBreaker 보호 하에 정상 서비스 |
 ---
 
 ## 5. 프로젝트 실행 방법 (Quick Start)

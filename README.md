@@ -99,6 +99,46 @@ GCP 기반 All-in-one 보안 플랫폼 - Terraform + Ansible IaC 구축
 | **Wazuh Manager** | 1514, 1515, 55000 | SIEM Agent |
 | **Wazuh Dashboard** | 8443 | SIEM Web UI |
 
+## Service Scenarios
+
+### Service-A: Load & Observability Test
+
+Spring Boot 기반 부하 테스트 및 관측(Observability) 백엔드입니다.
+
+**목적:**
+- 의도적 시스템 부하 발생 → 서킷 브레이커 동작 확인
+- Prometheus/Grafana로 상태 시각화
+- Docker 단일 서버 환경의 한계 체험
+
+**핵심 기능:**
+- CPU / DB READ / DB WRITE 부하 API
+- 2단계 방어: IP Rate Limit + CircuitBreaker
+- 2-Tier Cache (Caffeine L1 + Redis L2)
+- trace_id 기반 요청 추적
+
+👉 [상세 문서](services/service-a/backend/README.md)
+
+### Service-B: Security Vulnerability Lab
+
+FastAPI 기반 보안 취약점 재현/탐지 실험용 백엔드입니다.
+
+**목적:**
+- SQLi, Brute Force 공격 요청 유입 → Wazuh 탐지 검증
+- 공격 징후 로그(JSON) 생성 → 알림 체계 동작 확인
+- Defense-in-Depth (3단계 방어) 아키텍처 검증
+
+**핵심 기능:**
+- 의도적 SQLi 취약점 (문자열 결합 쿼리)
+- 인증 실패 반복 허용 (Brute Force 시나리오)
+- Wazuh Level 12 탐지 / 이메일 알림
+
+**방어 계층:**
+- L1: Cloud Armor (Edge WAF, 승인 대기 중)
+- L2: Wazuh (Host 감시, Post-Exploitation 탐지)
+- L3: GCS (로그 장기 보관, 포렌식)
+
+👉 [상세 문서](services/service-b/backend/README.md)
+
 ## Quick Start
 
 ### Prerequisites
