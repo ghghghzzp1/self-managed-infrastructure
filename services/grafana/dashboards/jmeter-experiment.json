@@ -29,7 +29,10 @@
               "options": {
                 "0": { "text": "CLOSED", "color": "green" },
                 "1": { "text": "OPEN", "color": "red" },
-                "2": { "text": "HALF_OPEN", "color": "yellow" }
+                "2": { "text": "HALF_OPEN", "color": "yellow" },
+                "3": { "text": "FORCED_OPEN", "color": "#705DA0" },
+                "4": { "text": "DISABLED", "color": "gray" },
+                "5": { "text": "METRICS_ONLY", "color": "blue" }
               },
               "type": "value"
             }
@@ -50,8 +53,8 @@
       "type": "state-timeline",
       "targets": [
         {
-          "expr": "resilience4j_circuitbreaker_state{name=\"testCircuit\",application=\"service-a-backend\"}",
-          "legendFormat": "{{name}}",
+          "expr": "1 * max by (instance) (resilience4j_circuitbreaker_state{application=\"service-a-backend\",job=\"service-a\",name=\"testCircuit\",state=\"open\"})\n+ 2 * max by (instance) (resilience4j_circuitbreaker_state{application=\"service-a-backend\",job=\"service-a\",name=\"testCircuit\",state=\"half_open\"})\n+ 3 * max by (instance) (resilience4j_circuitbreaker_state{application=\"service-a-backend\",job=\"service-a\",name=\"testCircuit\",state=\"forced_open\"})\n+ 4 * max by (instance) (resilience4j_circuitbreaker_state{application=\"service-a-backend\",job=\"service-a\",name=\"testCircuit\",state=\"disabled\"})\n+ 5 * max by (instance) (resilience4j_circuitbreaker_state{application=\"service-a-backend\",job=\"service-a\",name=\"testCircuit\",state=\"metrics_only\"})",
+          "legendFormat": " ",
           "refId": "A"
         }
       ]
@@ -80,13 +83,13 @@
           {
             "matcher": { "id": "byName", "options": "429" },
             "properties": [
-              { "id": "color", "value": { "mode": "fixed", "fixedColor": "red" } }
+              { "id": "color", "value": { "mode": "fixed", "fixedColor": "yellow" } }
             ]
           },
           {
             "matcher": { "id": "byName", "options": "500" },
             "properties": [
-              { "id": "color", "value": { "mode": "fixed", "fixedColor": "orange" } }
+              { "id": "color", "value": { "mode": "fixed", "fixedColor": "red" } }
             ]
           },
           {
@@ -156,7 +159,33 @@
             "steps": [{ "color": "green", "value": null }]
           },
           "unit": "short"
-        }
+        },
+        "overrides": [
+          {
+            "matcher": { "id": "byName", "options": "active" },
+            "properties": [
+              { "id": "color", "value": { "mode": "fixed", "fixedColor": "#37872D" } }
+            ]
+          },
+          {
+            "matcher": { "id": "byName", "options": "idle" },
+            "properties": [
+              { "id": "color", "value": { "mode": "fixed", "fixedColor": "#8AB8FF" } }
+            ]
+          },
+          {
+            "matcher": { "id": "byName", "options": "pending" },
+            "properties": [
+              { "id": "color", "value": { "mode": "fixed", "fixedColor": "#EAB839" } }
+            ]
+          },
+          {
+            "matcher": { "id": "byName", "options": "timeout_total" },
+            "properties": [
+              { "id": "color", "value": { "mode": "fixed", "fixedColor": "#E02F44" } }
+            ]
+          }
+        ]
       },
       "gridPos": { "h": 8, "w": 16, "x": 0, "y": 10 },
       "id": 3,
@@ -186,6 +215,11 @@
           "expr": "hikaricp_connections_pending{application=\"service-a-backend\"}",
           "legendFormat": "pending",
           "refId": "C"
+        },
+        {
+          "expr": "hikaricp_connections_timeout_total{application=\"service-a-backend\"}",
+          "legendFormat": "timeout_total",
+          "refId": "D"
         }
       ]
     },
