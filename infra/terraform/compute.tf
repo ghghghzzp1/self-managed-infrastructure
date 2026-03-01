@@ -180,9 +180,16 @@ resource "google_compute_instance" "exit8_vm" {
       curl -L "https://github.com/docker/compose/releases/latest/download/docker-compose-$(uname -s)-$(uname -m)" -o /usr/local/bin/docker-compose
       chmod +x /usr/local/bin/docker-compose
 
-      # Create app directory
+      # Create deploy-bot user for CI/CD
+      # deploy-bot이 없으면 매 VM 재생성마다 .git/config 권한 오류 발생
+      useradd -m -s /bin/bash deploy-bot 2>/dev/null || true
+      usermod -aG docker deploy-bot
+
+      # Create app directory owned by deploy-bot
+      # deploy-bot이 git clone 및 docker compose를 실행할 수 있도록 소유권 부여
       mkdir -p /opt/exit8
-      chown ubuntu:ubuntu /opt/exit8
+      chown deploy-bot:deploy-bot /opt/exit8
+      chmod 755 /opt/exit8
 
       # =====================================================
       # Log Retention: 7-day local policy
