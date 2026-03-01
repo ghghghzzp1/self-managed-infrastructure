@@ -241,13 +241,13 @@
           {
             "matcher": { "id": "byName", "options": "active" },
             "properties": [
-              { "id": "color", "value": { "mode": "fixed", "fixedColor": "#1F78C1" } }
+              { "id": "color", "value": { "mode": "fixed", "fixedColor": "#37872D" } }
             ]
           },
           {
             "matcher": { "id": "byName", "options": "idle" },
             "properties": [
-              { "id": "color", "value": { "mode": "fixed", "fixedColor": "#6ED0E0" } }
+              { "id": "color", "value": { "mode": "fixed", "fixedColor": "#8AB8FF" } }
             ]
           },
           {
