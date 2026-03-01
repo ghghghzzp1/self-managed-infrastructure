@@ -380,12 +380,12 @@ jobs:
 
             # ===================================
             # Pull latest code via HTTPS token
+            # git remote set-url은 .git/config를 수정 → deploy-bot 권한 없으면 Permission Denied
+            # 해결: fetch <URL> + reset --hard 방식은 .git/config 쓰기 불필요
             # ===================================
             git config --global --add safe.directory "$REPO_DIR"
-            git remote set-url origin "https://oauth2:${GH_TOKEN}@github.com/exit8-ktcloud/self-managed-infrastructure.git"
-
-            git pull origin main
-            git remote set-url origin "https://github.com/exit8-ktcloud/self-managed-infrastructure.git"
+            git fetch "https://oauth2:${GH_TOKEN}@github.com/exit8-ktcloud/self-managed-infrastructure.git" main
+            git reset --hard FETCH_HEAD
             echo "✓ Code updated"
 
             # ===================================
