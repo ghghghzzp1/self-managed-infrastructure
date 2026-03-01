@@ -476,6 +476,4 @@ volumes:
   wazuh-indexer-data:
   wazuh-dashboard-config:
   wazuh-dashboard-custom:
-  filebeat_etc:
-  filebeat_var:
   grafana_data:
