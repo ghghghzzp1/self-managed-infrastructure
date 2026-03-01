@@ -91,7 +91,7 @@ resource "google_compute_backend_service" "exit8_backend" {
   session_affinity = "NONE"
 
   # Timeout settings
-  timeout_sec = 30
+  timeout_sec = 100
 }
 
 # URL Map (Routing Rules)
