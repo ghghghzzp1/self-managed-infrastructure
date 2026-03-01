@@ -85,7 +85,7 @@ resilience4j.circuitbreaker:
       # 최근 호출 기준 설정
       sliding-window-type: COUNT_BASED
       sliding-window-size: 100 # 최근 100건 기반 평가
-      minimum-number-of-calls: 100 # 100건 쌓여야 평가 시작
+      minimum-number-of-calls: 70 # 70건 쌓여야 평가 시작
       failure-rate-threshold: 50 # 실패율 50% 이상이면 OPEN
   instances:
     testCircuit:
