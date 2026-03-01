@@ -1,48 +1,85 @@
 # Cloud Monitoring & Logging Configuration
 # Centralized observability for Exit8 infrastructure
+#
+# 로깅 전략:
+#   - 앱/인프라 로그: gcplogs → Cloud Logging _Default 버킷 (30일 무료)
+#     실시간 조회는 Log Explorer 사용 (BigQuery 불필요)
+#   - ERROR+ 장기 보관: Cloud Logging → GCS (exit8-error-archive)
+#   - VM 로컬 로그: logrotate .gz → GCS (exit8-vm-log-archive)
 
 # ============================================================================
-# Log Router - Aggregate logs from all resources
+# VM Log Archive - Cloud Storage (로컬 logrotate .gz → GCS, 저비용 장기 보관)
 # ============================================================================
 
-# BigQuery Dataset for long-term log storage
-resource "google_bigquery_dataset" "exit8_logs" {
-  dataset_id  = "exit8_logs"
-  project     = var.project_id
-  location    = var.region
-  description = "Exit8 infrastructure and application logs (long-term storage)"
+# prefix별 보관 기간 전략:
+#   nginx/, system/ → 30일 (장애 분석용)
+#   wazuh/          → 180일 (보안 규정 및 침해 사고 조사용)
+resource "google_storage_bucket" "exit8_vm_log_archive" {
+  name          = "${var.project_id}-exit8-vm-log-archive"
+  location      = var.region
+  project       = var.project_id
+  force_destroy = false
 
-  # 90일 자동 만료: 비용 제어 (ERROR+ 는 GCS 아카이브로 별도 장기 보관)
-  default_table_expiration_ms = 7776000000 # 90 days = 90 * 24 * 60 * 60 * 1000
+  uniform_bucket_level_access = true
 
-  delete_contents_on_destroy = false
-}
-
-# Grant log sink's writer identity access to the BigQuery dataset
-resource "google_bigquery_dataset_iam_member" "log_sink_writer" {
-  project    = var.project_id
-  dataset_id = google_bigquery_dataset.exit8_logs.dataset_id
-  role       = "roles/bigquery.dataEditor"
-  member     = google_logging_project_sink.exit8_logs_sink.writer_identity
-
-  depends_on = [google_logging_project_sink.exit8_logs_sink]
-}
-
-# Log Sink for BigQuery (app + infra 로그, 90일 보관)
-# - gce_instance: Docker gcplogs 드라이버로 전달되는 앱 컨테이너 로그 (INFO+)
-# - cloudsql_database / redis_instance: 인프라 경고/오류만 (WARNING+)
-resource "google_logging_project_sink" "exit8_logs_sink" {
-  name                   = "exit8-logs-sink"
-  project                = var.project_id
-  destination            = "bigquery.googleapis.com/projects/${var.project_id}/datasets/${google_bigquery_dataset.exit8_logs.dataset_id}"
-  filter                 = "(resource.type=\"gce_instance\" AND severity>=\"INFO\") OR (resource.type=\"cloudsql_database\" AND severity>=\"WARNING\") OR (resource.type=\"redis_instance\" AND severity>=\"WARNING\")"
-  unique_writer_identity = true
-
-  bigquery_options {
-    use_partitioned_tables = true
+  # Nginx / System: NEARLINE 전환 후 30일 삭제
+  lifecycle_rule {
+    action {
+      type          = "SetStorageClass"
+      storage_class = "NEARLINE"
+    }
+    condition {
+      age            = 1
+      matches_prefix = ["nginx/", "system/"]
+    }
+  }
+  lifecycle_rule {
+    action {
+      type = "Delete"
+    }
+    condition {
+      age            = 30
+      matches_prefix = ["nginx/", "system/"]
+    }
   }
 
-  depends_on = [google_bigquery_dataset.exit8_logs]
+  # Wazuh: NEARLINE(7일) → COLDLINE(30일) → 180일 삭제
+  lifecycle_rule {
+    action {
+      type          = "SetStorageClass"
+      storage_class = "NEARLINE"
+    }
+    condition {
+      age            = 7
+      matches_prefix = ["wazuh/"]
+    }
+  }
+  lifecycle_rule {
+    action {
+      type          = "SetStorageClass"
+      storage_class = "COLDLINE"
+    }
+    condition {
+      age            = 30
+      matches_prefix = ["wazuh/"]
+    }
+  }
+  lifecycle_rule {
+    action {
+      type = "Delete"
+    }
+    condition {
+      age            = 180
+      matches_prefix = ["wazuh/"]
+    }
+  }
+}
+
+# VM 서비스 계정에 업로드 권한 부여
+resource "google_storage_bucket_iam_member" "vm_log_archive_writer" {
+  bucket = google_storage_bucket.exit8_vm_log_archive.name
+  role   = "roles/storage.objectCreator"
+  member = "serviceAccount:${google_service_account.vm_service_account.email}"
 }
 
 # ============================================================================

@@ -210,50 +210,52 @@ gcloud secrets versions access latest --secret=exit8-wazuh-credentials | jq -r '
 
 ## Logging Architecture
 
-앱 컨테이너 로그는 `gcplogs` 드라이버로 Cloud Logging에 직접 전송되며, 두 가지 저장소로 라우팅됩니다.
+### 전체 파이프라인
 
 ```
-앱 컨테이너 (gcplogs driver)
-  └─→ Cloud Logging
-        ├─→ BigQuery: exit8_logs     [INFO+, 90일 자동 만료]
-        └─→ GCS: error-archive       [ERROR+, 1년 보관]
-                  ├ STANDARD  0-30일   $0.02/GB
-                  ├ NEARLINE  30-90일  $0.01/GB
-                  └ COLDLINE  90일~    $0.004/GB
+[앱 컨테이너] gcplogs driver
+  └─→ Cloud Logging (_Default 버킷, 30일 무료 보관)
+        └─→ GCS: exit8-error-archive  ERROR+ / 1년 보관 (Log Sink)
 
-인프라 컨테이너 (json-file driver)  →  로컬 보관만 (docker logs 지원)
+[인프라 컨테이너] json-file driver (docker logs 지원)
+  └─→ VM 로컬 저장 → logrotate → GCS: exit8-vm-log-archive (매일 새벽 3시 업로드)
+        ├─→ system/  System 로그  7일 로컬 → GCS 30일
+        ├─→ nginx/   NPM 로그     7일 로컬 → GCS 30일
+        └─→ wazuh/   Wazuh 로그   7일 로컬 → GCS 180일 (보안 규정)
 ```
 
-**로그 소스별 필터**
+### 로컬 보관 정책 (VM)
 
-| 소스 | BigQuery (exit8_logs) | GCS (error-archive) |
-|------|-----------------------|---------------------|
-| 앱 컨테이너 (gce_instance) | INFO 이상 | ERROR 이상 |
-| Cloud SQL | WARNING 이상 | ERROR 이상 |
-| Redis | WARNING 이상 | ERROR 이상 |
+| 로그 경로 | 보관 기간 | 크기 제한 | 비고 |
+|-----------|-----------|-----------|------|
+| `/var/log/journal/` | 7일 / Max 500MB | systemd journal | journald 설정 |
+| `/var/log/syslog` 등 | 7일 | 100MB 초과 시 즉시 로테이션 | logrotate daily |
+| NPM `/data/logs/` | 7일 | 50MB 초과 시 즉시 로테이션 | logrotate + copytruncate |
+| Wazuh `/wazuh_logs/` | 7일 | - | 보안 사고 시점 최소 확인 기간 |
+| Docker infra 컨테이너 | size 기반 | 10MB × 3파일 = 30MB/컨테이너 | json-file driver |
 
-**BigQuery 로그 조회**
+### GCS 장기 보관 전략
 
-```sql
--- 최근 앱 에러 로그 조회
-SELECT timestamp, severity, jsonPayload.message, labels.`com_docker_compose_service`
-FROM `thinking-orb-485613-k3.exit8_logs.*`
-WHERE severity >= 'ERROR'
-  AND timestamp > TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL 24 HOUR)
-ORDER BY timestamp DESC
-LIMIT 100;
+logrotate가 압축한 `.gz` 파일을 매일 새벽 3시 GCS로 업로드 (`/usr/local/bin/upload-logs-to-gcs.sh`).
 
--- 서비스별 에러 집계
-SELECT labels.`com_docker_compose_service` AS service,
-       COUNT(*) AS error_count
-FROM `thinking-orb-485613-k3.exit8_logs.*`
-WHERE severity >= 'ERROR'
-  AND timestamp > TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL 7 DAY)
-GROUP BY service
-ORDER BY error_count DESC;
+| GCS prefix | 보관 기간 | 스토리지 클래스 전환 | 용도 |
+|------------|-----------|----------------------|------|
+| `nginx/`, `system/` | 30일 | 1일 → NEARLINE | 장애 분석 |
+| `wazuh/` | 180일 | 7일 → NEARLINE → 30일 → COLDLINE | 보안 규정 / 침해 사고 조사 |
+| ERROR+ (Cloud Logging sink) | 1년 | 30일 → NEARLINE → 90일 → COLDLINE | 앱/인프라 에러 아카이브 |
+
+### 로그 조회
+
+앱 컨테이너는 `gcplogs` 드라이버를 사용하므로 `docker logs` 명령이 동작하지 않습니다.
+GCP Console → **Log Explorer**에서 실시간 조회하세요.
+
+```
+# Log Explorer 필터 예시
+resource.type="gce_instance" AND severity>=ERROR
+labels."com.docker.compose.service"="service-a-backend"
 ```
 
-> **주의**: 앱 컨테이너(`service-a-backend`, `service-b-backend` 등)는 `gcplogs` 드라이버를 사용하므로 `docker logs` 명령이 동작하지 않습니다. 로그는 Cloud Logging Console 또는 BigQuery에서 조회하세요.
+ERROR+ 장기 보관 로그는 GCS `exit8-error-archive` 버킷에서 확인할 수 있습니다.
 
 ## Estimated Costs
 
@@ -263,9 +265,9 @@ ORDER BY error_count DESC;
 | Memorystore | ~$35/month |
 | Compute Engine | ~$70/month |
 | HTTPS LB + Cloud Armor | ~$20/month |
-| BigQuery (exit8_logs, 90일) | ~$1/month (첫 10GB 무료) |
 | GCS Error Archive | ~$0.1/month (ERROR 로그만, COLDLINE) |
-| **Total** | **~$176/month (~₩253,000)** |
+| GCS VM Log Archive | ~$0.05/month (nginx/system/wazuh .gz) |
+| **Total** | **~$175/month (~₩252,000)** |
 
 ## Project Structure
 
