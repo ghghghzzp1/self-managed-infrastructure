@@ -175,15 +175,125 @@ resource "google_compute_instance" "exit8_vm" {
       curl -fsSL https://get.docker.com -o get-docker.sh
       sh get-docker.sh
       usermod -aG docker ubuntu
-      
+
       # Install Docker Compose
       curl -L "https://github.com/docker/compose/releases/latest/download/docker-compose-$(uname -s)-$(uname -m)" -o /usr/local/bin/docker-compose
       chmod +x /usr/local/bin/docker-compose
-      
+
       # Create app directory
       mkdir -p /opt/exit8
       chown ubuntu:ubuntu /opt/exit8
-      
+
+      # =====================================================
+      # Log Retention: 7-day local policy
+      # BigQuery keeps 90 days externally via log sink
+      # =====================================================
+
+      # Systemd journal: 7일 보관, 최대 500MB
+      mkdir -p /etc/systemd/journald.conf.d
+      cat > /etc/systemd/journald.conf.d/retention.conf <<'JOURNALD'
+[Journal]
+MaxRetentionSec=7day
+SystemMaxUse=500M
+SystemKeepFree=1G
+JOURNALD
+      systemctl restart systemd-journald
+
+      # 시스템 로그 (syslog, auth, kern): 7일 보관 / 100MB 초과 시 즉시 로테이션
+      cat > /etc/logrotate.d/rsyslog <<'LOGROTATE'
+/var/log/syslog
+/var/log/mail.info
+/var/log/mail.warn
+/var/log/mail.err
+/var/log/mail.log
+/var/log/daemon.log
+/var/log/kern.log
+/var/log/auth.log
+/var/log/user.log
+/var/log/lpr.log
+/var/log/cron.log
+/var/log/debug
+/var/log/messages
+{
+    daily
+    rotate 7
+    size 100M
+    missingok
+    notifempty
+    compress
+    delaycompress
+    sharedscripts
+    postrotate
+        /usr/lib/rsyslog/rsyslog-rotate
+    endscript
+}
+LOGROTATE
+
+      # NPM nginx 로그: 7일 보관 / 50MB 초과 시 즉시 로테이션
+      cat > /etc/logrotate.d/npm-logs <<'LOGROTATE'
+/var/lib/docker/volumes/self-managed-infrastructure_npm_data/_data/logs/*.log {
+    daily
+    rotate 7
+    size 50M
+    missingok
+    notifempty
+    compress
+    delaycompress
+    copytruncate
+}
+LOGROTATE
+
+      # Wazuh 로그: 7일 보관 (보안 사고 시점 최소 확인 기간)
+      cat > /etc/logrotate.d/wazuh-logs <<'LOGROTATE'
+/var/lib/docker/volumes/self-managed-infrastructure_wazuh_logs/_data/*.log {
+    daily
+    rotate 7
+    missingok
+    notifempty
+    compress
+    delaycompress
+    copytruncate
+}
+LOGROTATE
+
+      # GCS 업로드 스크립트: logrotate가 만든 .gz 파일을 매일 새벽 GCS로 전송
+      # - system/, nginx/: 30일 보관 (장애 분석용)
+      # - wazuh/: 180일 보관 (보안 규정 및 침해 사고 조사용)
+      cat > /usr/local/bin/upload-logs-to-gcs.sh <<'UPLOAD'
+#!/bin/bash
+BUCKET="${var.project_id}-exit8-vm-log-archive"
+DATE=$(date +%Y/%m/%d)
+
+upload() {
+    local src="$1" dest="$2"
+    gcloud storage cp "$src" "$dest" --quiet \
+        && echo "[gcs-upload] OK: $(basename $src) → $dest" \
+        || echo "[gcs-upload] FAIL: $src"
+}
+
+# System logs → gs://BUCKET/system/YYYY/MM/DD/
+find /var/log -maxdepth 1 -name "*.gz" -mtime -1 2>/dev/null | while read f; do
+    upload "$f" "gs://$BUCKET/system/$DATE/$(basename $f)"
+done
+
+# NPM nginx logs → gs://BUCKET/nginx/YYYY/MM/DD/
+find /var/lib/docker/volumes/self-managed-infrastructure_npm_data/_data/logs \
+    -name "*.gz" -mtime -1 2>/dev/null | while read f; do
+    upload "$f" "gs://$BUCKET/nginx/$DATE/$(basename $f)"
+done
+
+# Wazuh logs → gs://BUCKET/wazuh/YYYY/MM/DD/
+find /var/lib/docker/volumes/self-managed-infrastructure_wazuh_logs/_data \
+    -name "*.gz" -mtime -1 2>/dev/null | while read f; do
+    upload "$f" "gs://$BUCKET/wazuh/$DATE/$(basename $f)"
+done
+UPLOAD
+      chmod +x /usr/local/bin/upload-logs-to-gcs.sh
+
+      # 매일 새벽 3시 GCS 업로드 (logrotate 완료 후)
+      echo "0 3 * * * root /usr/local/bin/upload-logs-to-gcs.sh >> /var/log/upload-logs-to-gcs.log 2>&1" \
+          > /etc/cron.d/exit8-log-upload
+
       # Log completion
       echo "Startup script completed at $(date)" >> /var/log/startup-script.log
     EOF
