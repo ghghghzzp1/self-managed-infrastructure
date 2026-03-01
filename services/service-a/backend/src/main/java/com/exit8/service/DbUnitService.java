@@ -37,23 +37,24 @@ public class DbUnitService {
      * - 구조 단순화를 위해 Redis I/O도 동일 트랜잭션 경계 내에서 수행
      */
     @CircuitBreaker(name = CircuitNames.TEST_CIRCUIT)
-    @Transactional(readOnly = true) // REQUIRED 기본
     public void simulateDbReadOne(int pageIndex, boolean cacheEnabled) {
 
+        final int pageSize = 20;
         final String cacheKey = String.format(
-                "test:%s:spring:dummy-data-page:%d-20",
-                applicationName,
-                pageIndex
+                "test:%s:spring:dummy-data-page:%d-%d",
+                applicationName, pageIndex, pageSize
         );
-        final Pageable pageable = PageRequest.of(pageIndex, 20, Sort.by("id").ascending());
+        final Pageable pageable = PageRequest.of(pageIndex, pageSize, Sort.by("id").ascending());
 
-        // Redis 비활성화 시 → DB 직행 (캐시 지표 집계 제외)
+        // Redis OFF → DB만 (트랜잭션은 loadFromDb 내부에서만)
         if (!cacheEnabled) {
-            dummyDataRepository.findAll(pageable);
+            loadFromDb(pageable);
             return;
         }
         // Redis ValueOperations 핸들 (동일 연산 반복 호출 시 가독성 및 코드 단순화 목적)
         final var ops = redisTemplate.opsForValue();
+
+        // 1) Redis read (트랜잭션 밖)
         List<DummyDataRecord> cached = null;
 
         // 1) Redis Cache Read (실패하면 캐시 무시하고 DB로 진행)
@@ -64,7 +65,7 @@ public class DbUnitService {
         } catch (org.springframework.data.redis.RedisConnectionFailureException |
                  org.springframework.data.redis.RedisSystemException |
                  org.springframework.data.redis.serializer.SerializationException e) {
-            // read 실패 -> miss로 처리될 수 있으나, miss 집계는 DB 조회 시점에 1회만 수행
+            // ignore: 캐시 read 실패 시 DB로 진행
         }
 
         // 2) Cache Hit
@@ -73,19 +74,24 @@ public class DbUnitService {
             return;
         }
 
-        // 3) Cache Miss -> DB 조회 (DB 조회 발생 시 miss 1회만 증가)
+        // 3) miss → DB (트랜잭션 안)
         cacheMetrics.incrementMiss();
-        var page = dummyDataRepository.findAll(pageable);
+        List<DummyDataRecord> content = loadFromDb(pageable);
 
-        // 4) Redis Cache Write (실패해도 DB 결과로 정상 처리, DB 재조회 없음)
+        // 4) Redis write (트랜잭션 밖)
         try {
             long ttl = Math.max(cacheTtlSeconds, 1);
-            ops.set(cacheKey, page.getContent(), Duration.ofSeconds(ttl));
+            ops.set(cacheKey, content, Duration.ofSeconds(ttl));
         } catch (org.springframework.data.redis.RedisConnectionFailureException |
                  org.springframework.data.redis.RedisSystemException |
                  org.springframework.data.redis.serializer.SerializationException e) {
-            // write 실패 -> 캐시 저장만 실패.
+            // ignore: 캐시 write 실패는 서비스 정상 처리
         }
+    }
+
+    @Transactional(readOnly = true)
+    protected List<DummyDataRecord> loadFromDb(Pageable pageable) {
+        return dummyDataRepository.findAllBy(pageable).getContent();
     }
 
     /**
