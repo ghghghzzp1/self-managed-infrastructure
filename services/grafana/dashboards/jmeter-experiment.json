@@ -43,7 +43,7 @@
           }
         }
       },
-      "gridPos": { "h": 7, "w": 12, "x": 0, "y": 1 },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 1 },
       "id": 1,
       "options": {
         "mergeValues": true,
@@ -55,83 +55,6 @@
         {
           "expr": "1 * max by (instance) (resilience4j_circuitbreaker_state{application=\"service-a-backend\",job=\"service-a\",name=\"testCircuit\",state=\"open\"})\n+ 2 * max by (instance) (resilience4j_circuitbreaker_state{application=\"service-a-backend\",job=\"service-a\",name=\"testCircuit\",state=\"half_open\"})\n+ 3 * max by (instance) (resilience4j_circuitbreaker_state{application=\"service-a-backend\",job=\"service-a\",name=\"testCircuit\",state=\"forced_open\"})\n+ 4 * max by (instance) (resilience4j_circuitbreaker_state{application=\"service-a-backend\",job=\"service-a\",name=\"testCircuit\",state=\"disabled\"})\n+ 5 * max by (instance) (resilience4j_circuitbreaker_state{application=\"service-a-backend\",job=\"service-a\",name=\"testCircuit\",state=\"metrics_only\"})",
           "legendFormat": " ",
-          "refId": "A"
-        }
-      ]
-    },
-    {
-      "datasource": {
-        "type": "prometheus",
-        "uid": "prometheus"
-      },
-      "fieldConfig": {
-        "defaults": {
-          "thresholds": {
-            "mode": "absolute",
-            "steps": [{ "color": "green", "value": null }]
-          }
-        },
-        "overrides": [
-          {
-            "matcher": { "id": "byName", "options": "open" },
-            "properties": [
-              { "id": "displayName", "value": "OPEN" },
-              { "id": "color", "value": { "mode": "fixed", "fixedColor": "red" } }
-            ]
-          },
-          {
-            "matcher": { "id": "byName", "options": "half_open" },
-            "properties": [
-              { "id": "displayName", "value": "HALF_OPEN" },
-              { "id": "color", "value": { "mode": "fixed", "fixedColor": "yellow" } }
-            ]
-          },
-          {
-            "matcher": { "id": "byName", "options": "closed" },
-            "properties": [
-              { "id": "displayName", "value": "CLOSED" },
-              { "id": "color", "value": { "mode": "fixed", "fixedColor": "green" } }
-            ]
-          },
-          {
-            "matcher": { "id": "byName", "options": "forced_open" },
-            "properties": [
-              { "id": "displayName", "value": "FORCED_OPEN" },
-              { "id": "color", "value": { "mode": "fixed", "fixedColor": "#705DA0" } }
-            ]
-          },
-          {
-            "matcher": { "id": "byName", "options": "disabled" },
-            "properties": [
-              { "id": "displayName", "value": "DISABLED" },
-              { "id": "color", "value": { "mode": "fixed", "fixedColor": "gray" } }
-            ]
-          },
-          {
-            "matcher": { "id": "byName", "options": "metrics_only" },
-            "properties": [
-              { "id": "displayName", "value": "METRICS_ONLY" },
-              { "id": "color", "value": { "mode": "fixed", "fixedColor": "blue" } }
-            ]
-          }
-        ]
-      },
-      "gridPos": { "h": 1, "w": 12, "x": 0, "y": 8 },
-      "id": 14,
-      "options": {
-        "colorMode": "background",
-        "graphMode": "none",
-        "justifyMode": "center",
-        "orientation": "horizontal",
-        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
-        "textMode": "name"
-      },
-      "title": "CB Legend",
-      "type": "stat",
-      "targets": [
-        {
-          "expr": "max by (state) (resilience4j_circuitbreaker_state{application=\"service-a-backend\",job=\"service-a\",name=\"testCircuit\"})",
-          "legendFormat": "{{state}}",
           "refId": "A"
         }
       ]
