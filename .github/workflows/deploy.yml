@@ -379,9 +379,29 @@ jobs:
 
 
             # ===================================
+            # Pre-flight: Ensure correct ownership
+            # 누군가 sudo git을 실행하면 .git 파일들이 root 소유가 되어 Permission Denied 발생
+            # 자동으로 deploy-bot 소유로 복구
+            # ===================================
+            CURRENT_USER=$(whoami)
+            REPO_OWNER=$(stat -c '%U' "$REPO_DIR" 2>/dev/null || stat -f '%Su' "$REPO_DIR" 2>/dev/null)
+            
+            if [ "$REPO_OWNER" != "$CURRENT_USER" ]; then
+              echo "⚠ Permission mismatch detected: repo owned by '$REPO_OWNER', running as '$CURRENT_USER'"
+              echo "Fixing ownership..."
+              if sudo chown -R $CURRENT_USER:$CURRENT_USER "$REPO_DIR" 2>/dev/null; then
+                echo "✓ Ownership fixed"
+              else
+                echo "❌ Failed to fix ownership. Run on server:"
+                echo "   sudo chown -R $CURRENT_USER:$CURRENT_USER $REPO_DIR"
+                exit 1
+              fi
+            fi
+
+            # ===================================
             # Pull latest code via HTTPS token
-            # git remote set-url은 .git/config를 수정 → deploy-bot 권한 없으면 Permission Denied
-            # 해결: fetch <URL> + reset --hard 방식은 .git/config 쓰기 불필요
+            # git remote set-url은 .git/config를 수정 → 권한 문제 가능성
+            # 해결: fetch <URL> + reset --hard 방식은 config 수정 불필요
             # ===================================
             git config --global --add safe.directory "$REPO_DIR"
             git fetch "https://oauth2:${GH_TOKEN}@github.com/exit8-ktcloud/self-managed-infrastructure.git" main
