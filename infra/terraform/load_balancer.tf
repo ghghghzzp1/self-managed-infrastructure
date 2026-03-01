@@ -201,12 +201,11 @@ resource "google_compute_global_forwarding_rule" "exit8_http" {
 #   3. 승인 완료 후 아래 블록 전체 주석 해제
 #   4. backend_service의 security_policy 라인도 함께 주석 해제
 # ============================================================================
-
 # resource "google_compute_security_policy" "exit8_security" {
 #   name    = "${var.lb_name}-security-policy"
 #   project = var.project_id
 #
-#   # Default rule - allow all
+#   # Default rule - allow all (lowest priority)
 #   rule {
 #     action   = "allow"
 #     priority = "2147483647"
@@ -219,65 +218,86 @@ resource "google_compute_global_forwarding_rule" "exit8_http" {
 #     description = "Default allow rule"
 #   }
 #
-#   # Block known bad IPs (can be updated)
-#   # rule {
-#   #   action   = "deny(403)"
-#   #   priority = "1000"
-#   #   match {
-#   #     versioned_expr = "SRC_IPS_V1"
-#   #     config {
-#   #       src_ip_ranges = ["1.2.3.4/32"]
-#   #     }
-#   #   }
-#   #   description = "Block known bad IPs"
-#   # }
+#   # ==========================================================================
+#   # Rate Limiting Rules (Priority 1000-1999)
+#   # ==========================================================================
 #
-#   # ⚠️ 아래 WAF 룰은 SECURITY_POLICY_ADVANCED_RULES 쿼터도 추가로 필요.
-#   # 쿼터 증설 후 주석 해제할 것.
+#   # 브루트포스 차단: 동일 IP에서 60초당 로그인 시도 10회 초과 시 5분 차단
+#   rule {
+#     action   = "rate_based_ban"
+#     priority = "1000"
+#     match {
+#       versioned_expr = "SRC_IPS_V1"
+#       config {
+#         src_ip_ranges = ["*"]
+#       }
+#     }
+#     rate_limit_options {
+#       rate_limit_threshold {
+#         count        = 10
+#         interval_sec = 60
+#       }
+#       ban_duration_sec   = 300
+#       conform_action     = "allow"
+#       exceed_action      = "deny(429)"
+#       enforce_on_key     = "IP"
+#     }
+#     description = "Brute force rate limiting - 10 req/60s per IP"
+#   }
 #
-#   # rule {
-#   #   action   = "deny(403)"
-#   #   priority = "2000"
-#   #   match {
-#   #     expr { expression = "evaluatePreconfiguredExpr('sqli-stable')" }
-#   #   }
-#   #   description = "Block SQL injection attempts"
-#   # }
+#   # ==========================================================================
+#   # WAF Rules (Priority 2000-2999)
+#   # ⚠️ SECURITY_POLICY_ADVANCED_RULES 쿼터 추가 필요
+#   # ==========================================================================
 #
-#   # rule {
-#   #   action   = "deny(403)"
-#   #   priority = "2001"
-#   #   match {
-#   #     expr { expression = "evaluatePreconfiguredExpr('xss-stable')" }
-#   #   }
-#   #   description = "Block XSS attempts"
-#   # }
+#   # SQL Injection 차단
+#   rule {
+#     action   = "deny(403)"
+#     priority = "2000"
+#     match {
+#       expr { expression = "evaluatePreconfiguredExpr('sqli-stable')" }
+#     }
+#     description = "Block SQL injection attempts"
+#   }
 #
-#   # rule {
-#   #   action   = "deny(403)"
-#   #   priority = "2002"
-#   #   match {
-#   #     expr { expression = "evaluatePreconfiguredExpr('lfi-stable')" }
-#   #   }
-#   #   description = "Block LFI attempts"
-#   # }
+#   # XSS 차단
+#   rule {
+#     action   = "deny(403)"
+#     priority = "2001"
+#     match {
+#       expr { expression = "evaluatePreconfiguredExpr('xss-stable')" }
+#     }
+#     description = "Block XSS attempts"
+#   }
 #
-#   # rule {
-#   #   action   = "deny(403)"
-#   #   priority = "2003"
-#   #   match {
-#   #     expr { expression = "evaluatePreconfiguredExpr('rfi-stable')" }
-#   #   }
-#   #   description = "Block RFI attempts"
-#   # }
+#   # LFI (Local File Inclusion) 차단
+#   rule {
+#     action   = "deny(403)"
+#     priority = "2002"
+#     match {
+#       expr { expression = "evaluatePreconfiguredExpr('lfi-stable')" }
+#     }
+#     description = "Block LFI attempts"
+#   }
 #
-#   # rule {
-#   #   action   = "deny(403)"
-#   #   priority = "2004"
-#   #   match {
-#   #     expr { expression = "evaluatePreconfiguredExpr('php-stable')" }
-#   #   }
-#   #   description = "Block PHP injection attempts"
-#   # }
+#   # RFI (Remote File Inclusion) 차단
+#   rule {
+#     action   = "deny(403)"
+#     priority = "2003"
+#     match {
+#       expr { expression = "evaluatePreconfiguredExpr('rfi-stable')" }
+#     }
+#     description = "Block RFI attempts"
+#   }
+#
+#   # PHP Injection 차단
+#   rule {
+#     action   = "deny(403)"
+#     priority = "2004"
+#     match {
+#       expr { expression = "evaluatePreconfiguredExpr('php-stable')" }
+#     }
+#     description = "Block PHP injection attempts"
+#   }
 # }
 
