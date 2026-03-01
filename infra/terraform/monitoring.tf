@@ -126,7 +126,8 @@ resource "google_logging_project_sink" "exit8_error_archive_sink" {
   name                   = "exit8-error-archive-sink"
   project                = var.project_id
   destination            = "storage.googleapis.com/${google_storage_bucket.exit8_error_archive.name}"
-  filter                 = "(resource.type=\"gce_instance\" OR resource.type=\"cloudsql_database\" OR resource.type=\"redis_instance\") AND severity>=\"ERROR\""
+  # LB 로그(http_load_balancer)는 severity가 항상 INFO이므로 httpRequest.status로 별도 조건 분리
+  filter                 = "((resource.type=\"gce_instance\" OR resource.type=\"cloudsql_database\" OR resource.type=\"redis_instance\") AND severity>=\"ERROR\") OR (resource.type=\"http_load_balancer\" AND httpRequest.status>=500)"
   unique_writer_identity = true
 
   depends_on = [google_storage_bucket.exit8_error_archive]

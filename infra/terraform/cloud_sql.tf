@@ -63,11 +63,36 @@ resource "google_sql_database_instance" "exit8_postgres" {
       value = "on"
     }
 
+    # 500ms 이상 슬로우 쿼리 로깅 (Query Insights 보조)
+    database_flags {
+      name  = "log_min_duration_statement"
+      value = "500"
+    }
+
+    # 잠금 대기 발생 시 로깅 (데드락 원인 추적)
+    database_flags {
+      name  = "log_lock_waits"
+      value = "on"
+    }
+
+    # 임시 파일 생성 모두 로깅 (메모리 부족 / 정렬 이슈 탐지)
+    database_flags {
+      name  = "log_temp_files"
+      value = "0"
+    }
+
     backup_configuration {
       enabled                        = true
-      start_time                     = "02:00"  # 2 AM KST
+      start_time                     = "02:00"  # 새벽 2시 (트래픽 최저점)
       point_in_time_recovery_enabled = true
-      transaction_log_retention_days = 3
+      transaction_log_retention_days = 7  # 3일 → 7일 (PITR 최대)
+
+      # 자동 백업 14개 보관 (2주)
+      # 기본값 7개는 장기 장애 대응에 부족
+      backup_retention_settings {
+        retained_backups = 14
+        retention_unit   = "COUNT"
+      }
     }
 
     maintenance_window {

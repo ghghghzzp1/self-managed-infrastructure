@@ -75,6 +75,15 @@ resource "google_compute_backend_service" "exit8_backend" {
   # GCP 콘솔 → IAM 및 관리자 → 할당량 → "SECURITY_POLICIES" 검색 → 증설 요청
   # security_policy = google_compute_security_policy.exit8_security.name
 
+  # LB 액세스 로그 → Cloud Logging (resource.type="http_load_balancer")
+  # - 30일 무료 보관 (_Default 버킷), Log Explorer로 실시간 조회
+  # - 5xx 로그는 monitoring.tf 싱크를 통해 GCS exit8-error-archive로 1년 보관
+  # - sample_rate=1.0: 100% 샘플링 (트래픽 적은 데모 환경 기준)
+  log_config {
+    enable      = true
+    sample_rate = 1.0
+  }
+
   # Connection draining
   connection_draining_timeout_sec = 300
 
