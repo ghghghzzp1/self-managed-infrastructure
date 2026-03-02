@@ -1,8 +1,9 @@
-<group name="local_rules,">
+﻿<group name="local_rules,">
 
-  <!-- ===== Nginx 기반 (URL/쿼리스트링 패턴 매칭) ===== -->
+  <!-- ===== Nginx based detection (URL/query pattern matching) ===== -->
   <rule id="100100" level="12">
     <if_sid>31103, 31106, 31110, 31151</if_sid>
+    <match type="pcre2">(?i)(union[\s\+]+select|'\s*(or|and)\b|--|/\*|\*/|sleep\(|benchmark\(|information_schema|%27\s*(or|and)\b)</match>
     <description>Critical: SQL Injection Attempt Detected!</description>
     <group>sql_injection_alert</group>
   </rule>
@@ -14,16 +15,16 @@
     <group>bruteforce_alert</group>
   </rule>
 
-  <!-- ===== Service-B Backend JSON 로그 기반 (POST body 공격 탐지) ===== -->
+  <!-- ===== Service-B Backend JSON log based detection ===== -->
 
-  <!-- 부모 룰: service-b 백엔드 JSON 로그 식별 -->
+  <!-- Parent rule: identify service-b backend JSON log -->
   <rule id="100200" level="0">
     <decoded_as>json</decoded_as>
-    <location>service-b-backend</location>
+    <location>/var/ossec/logs/service-b-backend/app.log</location>
     <description>Service-B Backend application log</description>
   </rule>
 
-  <!-- SQL Injection: 백엔드에서 SUSPICIOUS_INPUT 감지 시 즉시 level 12 -->
+  <!-- SQL Injection: trigger immediately on backend SUSPICIOUS_INPUT -->
   <rule id="100201" level="12">
     <if_sid>100200</if_sid>
     <field name="message">SUSPICIOUS_INPUT</field>
@@ -31,7 +32,7 @@
     <group>sql_injection_alert</group>
   </rule>
 
-  <!-- 로그인 실패 단건 (브루트포스 누적 카운트용) -->
+  <!-- Login failure event (for brute-force counting) -->
   <rule id="100202" level="5">
     <if_sid>100200</if_sid>
     <field name="message">AUTH_UNAUTHORIZED</field>
@@ -39,7 +40,7 @@
     <group>authentication_failed</group>
   </rule>
 
-  <!-- Brute Force: 동일 IP에서 60초 내 5회 이상 로그인 실패 -->
+  <!-- Brute Force: 5+ failed auths from same IP in 60 seconds -->
   <rule id="100203" level="12" frequency="5" timeframe="60">
     <if_matched_sid>100202</if_matched_sid>
     <same_field>ip</same_field>
@@ -48,3 +49,4 @@
   </rule>
 
 </group>
+
