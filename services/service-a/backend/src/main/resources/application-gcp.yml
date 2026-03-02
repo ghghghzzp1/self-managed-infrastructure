@@ -128,8 +128,8 @@ resilience4j:
     configs:
       default:
         sliding-window-type: COUNT_BASED
-        sliding-window-size: 100
-        minimum-number-of-calls: 70
+        sliding-window-size: 50
+        minimum-number-of-calls: 25
         failure-rate-threshold: 50
         slow-call-duration-threshold: 3000ms
         slow-call-rate-threshold: 50
@@ -144,6 +144,7 @@ resilience4j:
           - org.springframework.transaction.CannotCreateTransactionException
           - org.hibernate.exception.JDBCConnectionException
           - java.util.concurrent.TimeoutException
+          - java.sql.SQLTransientConnectionException
         # 성공으로 간주할 예외
         ignore-exceptions:
           - com.exit8.exception.ApiException
