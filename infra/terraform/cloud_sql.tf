@@ -2,10 +2,12 @@
 # db-custom-2-8192: 2 vCPU, 8GB RAM
 
 # Generate random password for PostgreSQL
+# override_special: URL userinfo에서 인코딩 없이 허용되는 문자만 사용 (RFC 3986)
+# 제외된 문자: # % [ ] { } < > ? : ! — net/url 파서가 invalid userinfo로 거부함
 resource "random_password" "db_password" {
   length           = 32
   special          = true
-  override_special = "!#$%&*()-_=+[]{}<>:?"
+  override_special = "-_"
 }
 
 # Store password in Secret Manager
