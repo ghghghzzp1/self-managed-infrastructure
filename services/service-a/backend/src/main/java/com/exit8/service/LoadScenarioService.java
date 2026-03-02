@@ -11,6 +11,8 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 
+import java.util.stream.IntStream;
+
 @Service
 @RequiredArgsConstructor
 public class LoadScenarioService {
@@ -74,11 +76,10 @@ public class LoadScenarioService {
         // 요청 시작 시점의 Redis 활성화 상태 스냅샷 → 실행 도중 토글 변경으로 인한 실험 왜곡 방지
         final boolean cacheEnabled = runtimeFeatureState.isRedisCacheEnabled();
 
-        for (int i = 0; i < repeatCount; i++) {
-            final int pageIndex = i % 100;
-            // 1회 READ 실행 (CB 집계 단위)
-            dbUnitService.simulateDbReadOne(pageIndex, cacheEnabled);
-        }
+        // 호출 방식의 비동기화 (병렬성 확보)
+        IntStream.range(0, repeatCount)
+                .parallel() // 또는 별도의 Executor 사용
+                .forEach(i -> dbUnitService.simulateDbReadOne(i % 100, cacheEnabled));
     }
 
     /**

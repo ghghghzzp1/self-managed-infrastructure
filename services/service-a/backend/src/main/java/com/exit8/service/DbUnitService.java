@@ -90,7 +90,7 @@ public class DbUnitService {
     }
 
     @Transactional(readOnly = true)
-    protected List<DummyDataRecord> loadFromDb(Pageable pageable) {
+    public List<DummyDataRecord> loadFromDb(Pageable pageable) {
         return dummyDataRepository.findAllBy(pageable).getContent();
     }
 
