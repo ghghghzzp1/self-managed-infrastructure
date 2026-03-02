@@ -1,8 +1,12 @@
 import logging
+import os
 import sys
+from logging.handlers import RotatingFileHandler
 from pythonjsonlogger import jsonlogger
 from datetime import datetime, timezone, timedelta
 from app.core.context import trace_id_var, client_ip_var, user_id_var
+
+_WAZUH_LOG_FILE = "/var/log/service-b-backend/app.log"
 
 KST = timezone(timedelta(hours=9))
 
@@ -34,13 +38,27 @@ def get_logger(name: str):
 
     if not logger.handlers:
         logger.setLevel(logging.INFO)
-        handler = logging.StreamHandler(sys.stdout)
 
         formatter = CustomJsonFormatter(
             '%(@timestamp)s %(level)s %(mdc)s %(user_id)s %(ip)s %(message)s'
         )
-        handler.setFormatter(formatter)
-        logger.addHandler(handler)
+
+        # Handler 1: stdout → gcplogs 드라이버 → GCP Cloud Logging
+        stream_handler = logging.StreamHandler(sys.stdout)
+        stream_handler.setFormatter(formatter)
+        logger.addHandler(stream_handler)
+
+        # Handler 2: 파일 → Docker 볼륨 공유 → Wazuh 수집
+        try:
+            os.makedirs(os.path.dirname(_WAZUH_LOG_FILE), exist_ok=True)
+            file_handler = RotatingFileHandler(
+                _WAZUH_LOG_FILE, maxBytes=10 * 1024 * 1024, backupCount=3
+            )
+            file_handler.setFormatter(formatter)
+            logger.addHandler(file_handler)
+        except OSError:
+            # 볼륨 미마운트 환경(로컬 개발)에서는 파일 핸들러 없이 진행
+            pass
 
     return logger
 
