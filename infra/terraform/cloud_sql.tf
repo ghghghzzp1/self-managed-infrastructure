@@ -131,16 +131,10 @@ resource "google_sql_database" "app_database" {
 }
 
 # Application User
-# ignore_changes: 수동으로 비밀번호를 변경한 경우 terraform apply가 덮어쓰지 않도록 설정
-# 비밀번호 교체가 필요할 때: lifecycle 블록 제거 → terraform taint random_password.db_password → apply → .env 갱신
 resource "google_sql_user" "app_user" {
   name     = "exit8_app_user"
   project  = var.project_id
   instance = google_sql_database_instance.exit8_postgres.name
   password = random_password.db_password.result
-
-  lifecycle {
-    ignore_changes = [password]
-  }
 }
 
