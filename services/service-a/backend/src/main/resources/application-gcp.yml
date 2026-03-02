@@ -144,6 +144,7 @@ resilience4j:
           - org.springframework.transaction.CannotCreateTransactionException
           - org.hibernate.exception.JDBCConnectionException
           - java.util.concurrent.TimeoutException
+          - java.sql.SQLTransientConnectionException
         # 성공으로 간주할 예외
         ignore-exceptions:
           - com.exit8.exception.ApiException
