@@ -2,10 +2,12 @@
 # db-custom-2-8192: 2 vCPU, 8GB RAM
 
 # Generate random password for PostgreSQL
+# override_special: URL userinfo에서 인코딩 없이 허용되는 문자만 사용 (RFC 3986)
+# 제외된 문자: # % [ ] { } < > ? : ! — net/url 파서가 invalid userinfo로 거부함
 resource "random_password" "db_password" {
   length           = 32
   special          = true
-  override_special = "!#$%&*()-_=+[]{}<>:?"
+  override_special = "-_"
 }
 
 # Store password in Secret Manager
@@ -129,10 +131,16 @@ resource "google_sql_database" "app_database" {
 }
 
 # Application User
+# ignore_changes: 수동으로 비밀번호를 변경한 경우 terraform apply가 덮어쓰지 않도록 설정
+# 비밀번호 교체가 필요할 때: lifecycle 블록 제거 → terraform taint random_password.db_password → apply → .env 갱신
 resource "google_sql_user" "app_user" {
   name     = "exit8_app_user"
   project  = var.project_id
   instance = google_sql_database_instance.exit8_postgres.name
   password = random_password.db_password.result
+
+  lifecycle {
+    ignore_changes = [password]
+  }
 }
 
