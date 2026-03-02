@@ -154,6 +154,8 @@ services:
       # GCP Memorystore Redis
       REDIS_HOST: ${REDIS_HOST:-10.101.1.3}
       REDIS_PORT: ${REDIS_PORT:-6379}
+    volumes:
+      - service-b-backend-logs:/var/log/service-b-backend
     networks:
       - backend
     healthcheck:
@@ -244,9 +246,11 @@ services:
       - ./services/wazuh/config/wazuh_indexer_ssl_certs/root-ca-manager.pem:/etc/ssl/root-ca.pem
       - ./services/wazuh/config/wazuh_indexer_ssl_certs/wazuh.manager.pem:/etc/ssl/filebeat.pem
       - ./services/wazuh/config/wazuh_indexer_ssl_certs/wazuh.manager-key.pem:/etc/ssl/filebeat.key
-     # - ./services/wazuh/config/wazuh_cluster/wazuh_manager.conf:/var/ossec/etc/ossec.conf:ro
+      - ./services/wazuh/config/wazuh_cluster/wazuh_manager.conf:/var/ossec/etc/ossec.conf:ro
+      - ./services/wazuh/config/wazuh_cluster/local.rules.xml:/var/ossec/etc/rules/local_rules.xml:ro
       - service-a-logs:/var/ossec/logs/nginx/service-a:ro
       - service-b-logs:/var/ossec/logs/nginx/service-b:ro
+      - service-b-backend-logs:/var/ossec/logs/service-b-backend:ro
     networks:
       - wazuh_internal
       - backend
@@ -461,6 +465,7 @@ volumes:
   prometheus_data:
   service-a-logs:
   service-b-logs:
+  service-b-backend-logs:
   filebeat_etc:
   filebeat_var:
   wazuh_api_configuration:
